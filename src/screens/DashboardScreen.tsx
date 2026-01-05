@@ -1,18 +1,19 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Animated, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TrendingUp, Receipt, Handshake } from 'lucide-react-native';
-import { tokens } from '../theme';
+import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 
 interface QuickActionProps {
     icon: React.ReactNode;
     label: string;
     onPress: () => void;
+    colors: typeof tokens.colors;
 }
 
-const QuickActionCard: React.FC<QuickActionProps> = ({ icon, label, onPress }) => {
+const QuickActionCard: React.FC<QuickActionProps> = ({ icon, label, onPress, colors }) => {
     const scaleAnim = useRef(new Animated.Value(1)).current;
 
     const handlePressIn = () => {
@@ -38,20 +39,55 @@ const QuickActionCard: React.FC<QuickActionProps> = ({ icon, label, onPress }) =
             onPress={onPress}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
-            style={styles.actionPressable}
+            style={actionStyles.actionPressable}
         >
-            <Animated.View style={[styles.actionCard, { transform: [{ scale: scaleAnim }] }]}>
-                <View style={styles.iconContainer}>
+            <Animated.View style={[
+                actionStyles.actionCard,
+                {
+                    transform: [{ scale: scaleAnim }],
+                    backgroundColor: colors.semantic.surface,
+                }
+            ]}>
+                <View style={actionStyles.iconContainer}>
                     {icon}
                 </View>
-                <Text style={styles.actionLabel}>{label}</Text>
+                <Text style={[
+                    actionStyles.actionLabel,
+                    {
+                        color: colors.brand.secondary,
+                        fontFamily: tokens.typography.fontFamily.semibold,
+                    }
+                ]}>{label}</Text>
             </Animated.View>
         </Pressable>
     );
 };
 
+const actionStyles = StyleSheet.create({
+    actionPressable: {
+        flex: 1,
+    },
+    actionCard: {
+        borderRadius: 18,
+        padding: tokens.spacing.md,
+        alignItems: 'center',
+        minHeight: 100,
+        justifyContent: 'center',
+        ...tokens.shadow.quickAction,
+    },
+    iconContainer: {
+        marginBottom: tokens.spacing.xs,
+    },
+    actionLabel: {
+        fontSize: tokens.typography.sizes.sm,
+        textAlign: 'center',
+        marginTop: tokens.spacing.xs,
+    },
+});
+
 export const DashboardScreen: React.FC = () => {
     const { getTodaySales, getTodayExpenses, getBalance, settings, isLoading } = useApp();
+    const { colors, isDark } = useTheme();
     const navigation = useNavigation<any>();
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -62,6 +98,9 @@ export const DashboardScreen: React.FC = () => {
             useNativeDriver: true,
         }).start();
     }, [fadeAnim]);
+
+    // Create dynamic styles based on theme
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     if (isLoading) {
         return (
@@ -80,17 +119,17 @@ export const DashboardScreen: React.FC = () => {
 
     const quickActions = [
         {
-            icon: <TrendingUp size={28} color={tokens.colors.icon.active} strokeWidth={2.5} />,
+            icon: <TrendingUp size={28} color={colors.icon.active} strokeWidth={2.5} />,
             label: 'Add Sale',
             screen: 'Sales',
         },
         {
-            icon: <Receipt size={28} color={tokens.colors.icon.active} strokeWidth={2.5} />,
+            icon: <Receipt size={28} color={colors.icon.active} strokeWidth={2.5} />,
             label: 'Add Expense',
             screen: 'Expenses',
         },
         {
-            icon: <Handshake size={28} color={tokens.colors.icon.active} strokeWidth={2.5} />,
+            icon: <Handshake size={28} color={colors.icon.active} strokeWidth={2.5} />,
             label: 'Add Credit',
             screen: 'Credits',
         },
@@ -141,6 +180,7 @@ export const DashboardScreen: React.FC = () => {
                                 icon={action.icon}
                                 label={action.label}
                                 onPress={() => navigation.navigate(action.screen)}
+                                colors={colors}
                             />
                         ))}
                     </View>
@@ -150,10 +190,11 @@ export const DashboardScreen: React.FC = () => {
     );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles factory
+const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: tokens.colors.semantic.background,
+        backgroundColor: colors.semantic.background,
     },
     content: {
         flex: 1,
@@ -166,7 +207,8 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: tokens.typography.sizes.lg,
-        color: tokens.colors.text.secondary,
+        color: colors.text.secondary,
+        fontFamily: tokens.typography.fontFamily.medium,
     },
     header: {
         paddingTop: tokens.spacing.lg,
@@ -174,28 +216,30 @@ const styles = StyleSheet.create({
     },
     greeting: {
         fontSize: tokens.typography.sizes.md,
-        color: tokens.colors.text.secondary,
+        color: colors.text.secondary,
         marginBottom: tokens.spacing.xxs,
+        fontFamily: tokens.typography.fontFamily.regular,
     },
     title: {
         fontSize: tokens.typography.sizes.xxl,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.brand.secondary,
+        color: colors.brand.secondary,
+        fontFamily: tokens.typography.fontFamily.bold,
     },
     tagline: {
         fontSize: tokens.typography.sizes.sm,
-        color: tokens.colors.text.muted,
+        color: colors.text.muted,
         fontStyle: 'italic',
+        fontFamily: tokens.typography.fontFamily.regular,
     },
     sectionTitle: {
         fontSize: tokens.typography.sizes.lg,
-        fontWeight: tokens.typography.weight.semibold,
-        color: tokens.colors.text.primary,
+        color: colors.text.primary,
         marginTop: tokens.spacing.lg,
         marginBottom: tokens.spacing.sm,
+        fontFamily: tokens.typography.fontFamily.semibold,
     },
     summaryCard: {
-        backgroundColor: tokens.colors.semantic.surface,
+        backgroundColor: colors.semantic.surface,
         borderRadius: tokens.radius.lg,
         padding: tokens.spacing.md,
         marginBottom: 14,
@@ -203,21 +247,22 @@ const styles = StyleSheet.create({
     },
     cardLabel: {
         fontSize: tokens.typography.sizes.sm,
-        color: tokens.colors.text.secondary,
+        color: colors.text.secondary,
         marginBottom: tokens.spacing.xxs,
+        fontFamily: tokens.typography.fontFamily.regular,
     },
     cardAmountGreen: {
         fontSize: tokens.typography.sizes.xl,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.semantic.success,
+        color: colors.semantic.success,
+        fontFamily: tokens.typography.fontFamily.bold,
     },
     cardAmountRed: {
         fontSize: tokens.typography.sizes.xl,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.brand.primary,
+        color: colors.brand.primary,
+        fontFamily: tokens.typography.fontFamily.bold,
     },
     balanceCard: {
-        backgroundColor: tokens.colors.brand.secondary,
+        backgroundColor: colors.brand.secondary,
         borderRadius: tokens.radius.xl,
         padding: tokens.spacing.md,
         marginBottom: tokens.spacing.md,
@@ -230,39 +275,18 @@ const styles = StyleSheet.create({
         fontSize: tokens.typography.sizes.sm,
         color: 'rgba(255,255,255,0.8)',
         marginBottom: tokens.spacing.xxs,
+        fontFamily: tokens.typography.fontFamily.regular,
     },
     balanceAmount: {
         fontSize: tokens.typography.sizes.xxl,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.text.inverse,
+        color: colors.text.inverse,
+        fontFamily: tokens.typography.fontFamily.bold,
     },
     quickActions: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: tokens.spacing.xl,
         gap: 12,
-    },
-    actionPressable: {
-        flex: 1,
-    },
-    actionCard: {
-        backgroundColor: tokens.colors.semantic.surface,
-        borderRadius: 18,
-        padding: tokens.spacing.md,
-        alignItems: 'center',
-        minHeight: 100,
-        justifyContent: 'center',
-        ...tokens.shadow.quickAction,
-    },
-    iconContainer: {
-        marginBottom: tokens.spacing.xs,
-    },
-    actionLabel: {
-        fontSize: tokens.typography.sizes.sm,
-        color: tokens.colors.brand.secondary,
-        fontWeight: tokens.typography.weight.semibold,
-        textAlign: 'center',
-        marginTop: tokens.spacing.xs,
     },
 });
 

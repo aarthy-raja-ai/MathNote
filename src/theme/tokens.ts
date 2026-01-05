@@ -5,32 +5,37 @@ export const tokens = {
     colors: {
         brand: {
             primary: '#EC0B43',
-            secondary: '#58355E',
+            secondary: '#3D405B',
         },
         semantic: {
-            success: '#7AE7C7',
-            soft: '#D6FFB7',
-            background: '#FFF689',
+            success: '#81B29A',
+            soft: '#F2CC8F',
+            background: '#FFF8EC',
             surface: '#FFFFFF',
         },
         text: {
-            primary: '#58355E',
-            secondary: 'rgba(88,53,94,0.75)',
+            primary: '#2B2B2B',
+            secondary: 'rgba(43,43,43,0.75)',
             inverse: '#FFFFFF',
-            muted: 'rgba(88,53,94,0.45)',
+            muted: '#6B6B6B',
         },
         border: {
-            default: 'rgba(88,53,94,0.2)',
+            default: 'rgba(61,64,91,0.2)',
         },
         icon: {
             active: '#EC0B43',
-            inactive: 'rgba(88,53,94,0.45)',
+            inactive: '#6B6B6B',
             activeBackground: 'rgba(236,11,67,0.12)',
         },
     },
 
     typography: {
-        fontFamily: 'System',
+        fontFamily: {
+            regular: 'Exo2_400Regular',
+            medium: 'Exo2_500Medium',
+            semibold: 'Exo2_600SemiBold',
+            bold: 'Exo2_700Bold',
+        },
         sizes: {
             xs: 12,
             sm: 14,
@@ -98,6 +103,17 @@ export const tokens = {
             },
             android: {
                 elevation: 3,
+            },
+        }) || {},
+        floatingButton: Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.2,
+                shadowRadius: 10,
+            },
+            android: {
+                elevation: 6,
             },
         }) || {},
     },

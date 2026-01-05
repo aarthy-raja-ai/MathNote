@@ -75,14 +75,29 @@ export const storage = {
         ]);
         return { sales, expenses, credits, settings, exportedAt: new Date().toISOString() };
     },
+
+    // Clear all data
+    async clearAllData() {
+        try {
+            await AsyncStorage.clear();
+            return true;
+        } catch (error) {
+            console.error('Failed to clear all data:', error);
+            return false;
+        }
+    },
 };
 
 // Types
 export interface Sale {
     id: string;
     date: string;
-    amount: number;
+    customerName: string;           // Customer name for the sale
+    totalAmount: number;            // Total sale amount
+    paidAmount: number;             // Amount paid at time of sale
+    paymentMethod: 'Cash' | 'UPI';
     note: string;
+    linkedCreditId?: string;        // Reference to auto-created credit (if partial payment)
 }
 
 export interface Expense {
@@ -100,6 +115,7 @@ export interface Credit {
     amount: number;
     status: 'paid' | 'pending';
     date: string;
+    linkedSaleId?: string;          // Reference to originating sale (if auto-created from partial payment)
 }
 
 export interface Settings {

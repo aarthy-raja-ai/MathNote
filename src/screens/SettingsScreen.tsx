@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,12 +8,15 @@ import {
     TouchableOpacity,
     Switch,
     Alert,
+    Linking,
+    Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card, Button } from '../components';
-import { tokens } from '../theme';
+import { useNavigation } from '@react-navigation/native';
+import { Card } from '../components';
+import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
-import { useTheme } from '../theme';
+import * as Clipboard from 'expo-clipboard';
 import storage from '../utils/storage';
 
 const CURRENCIES = [
@@ -23,11 +26,16 @@ const CURRENCIES = [
     { code: '£', name: 'British Pound' },
 ];
 
+const CONTACT_EMAIL = 'raarthyraja@gmail.com';
+
 export const SettingsScreen: React.FC = () => {
-    const { settings, updateSettings } = useApp();
-    const { mode, toggleTheme } = useTheme();
+    const { settings, updateSettings, clearAllData } = useApp();
+    const { mode, toggleTheme, colors, isDark } = useTheme();
+    const navigation = useNavigation<any>();
     const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
+
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -74,25 +82,47 @@ export const SettingsScreen: React.FC = () => {
                     text: 'Clear All',
                     style: 'destructive',
                     onPress: async () => {
-                        // Clear all data logic here
-                        Alert.alert('Success', 'All data has been cleared');
+                        const success = await clearAllData();
+                        if (success) {
+                            Alert.alert('Success', 'All data has been cleared');
+                            navigation.navigate('Dashboard');
+                        } else {
+                            Alert.alert('Error', 'Failed to clear data');
+                        }
                     },
                 },
             ]
         );
     };
 
+    const handleEmailPress = async () => {
+        const mailtoUrl = `mailto:${CONTACT_EMAIL}`;
+        const canOpen = await Linking.canOpenURL(mailtoUrl);
+        if (canOpen) {
+            await Linking.openURL(mailtoUrl);
+        } else {
+            await handleCopyEmail();
+        }
+    };
+
+    const handleCopyEmail = async () => {
+        try {
+            await Clipboard.setStringAsync(CONTACT_EMAIL);
+            Alert.alert('Copied!', 'Email address copied to clipboard');
+        } catch (error) {
+            Alert.alert('Error', 'Failed to copy email');
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
                 <ScrollView showsVerticalScrollIndicator={false}>
-                    {/* Header */}
                     <View style={styles.header}>
                         <Text style={styles.title}>Settings</Text>
                         <Text style={styles.subtitle}>Customize your experience</Text>
                     </View>
 
-                    {/* Appearance */}
                     <Text style={styles.sectionTitle}>Appearance</Text>
                     <Card style={styles.settingCard}>
                         <View style={styles.settingRow}>
@@ -100,30 +130,21 @@ export const SettingsScreen: React.FC = () => {
                                 <Text style={styles.settingIcon}>🌙</Text>
                                 <View>
                                     <Text style={styles.settingLabel}>Dark Mode</Text>
-                                    <Text style={styles.settingDescription}>
-                                        Switch between light and dark theme
-                                    </Text>
+                                    <Text style={styles.settingDescription}>Switch between light and dark theme</Text>
                                 </View>
                             </View>
                             <Switch
-                                value={Boolean(mode === 'dark')}
+                                value={isDark}
                                 onValueChange={handleThemeToggle}
-                                trackColor={{
-                                    false: tokens.colors.border.default,
-                                    true: tokens.colors.brand.primary
-                                }}
-                                thumbColor={tokens.colors.semantic.surface}
+                                trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+                                thumbColor={colors.semantic.surface}
                             />
                         </View>
                     </Card>
 
-                    {/* Preferences */}
                     <Text style={styles.sectionTitle}>Preferences</Text>
                     <Card style={styles.settingCard}>
-                        <TouchableOpacity
-                            style={styles.settingRow}
-                            onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}
-                        >
+                        <TouchableOpacity style={styles.settingRow} onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}>
                             <View style={styles.settingInfo}>
                                 <Text style={styles.settingIcon}>💰</Text>
                                 <View>
@@ -141,10 +162,7 @@ export const SettingsScreen: React.FC = () => {
                                 {CURRENCIES.map((currency) => (
                                     <TouchableOpacity
                                         key={currency.code}
-                                        style={[
-                                            styles.currencyOption,
-                                            settings.currency === currency.code && styles.currencySelected,
-                                        ]}
+                                        style={[styles.currencyOption, settings.currency === currency.code && styles.currencySelected]}
                                         onPress={() => handleCurrencyChange(currency.code)}
                                     >
                                         <Text style={styles.currencyCode}>{currency.code}</Text>
@@ -155,7 +173,6 @@ export const SettingsScreen: React.FC = () => {
                         )}
                     </Card>
 
-                    {/* Security */}
                     <Text style={styles.sectionTitle}>Security</Text>
                     <Card style={styles.settingCard}>
                         <View style={styles.settingRow}>
@@ -163,24 +180,18 @@ export const SettingsScreen: React.FC = () => {
                                 <Text style={styles.settingIcon}>🔒</Text>
                                 <View>
                                     <Text style={styles.settingLabel}>App Lock</Text>
-                                    <Text style={styles.settingDescription}>
-                                        Require authentication to open app
-                                    </Text>
+                                    <Text style={styles.settingDescription}>Require authentication to open app</Text>
                                 </View>
                             </View>
                             <Switch
                                 value={Boolean(settings.lock)}
                                 onValueChange={handleLockToggle}
-                                trackColor={{
-                                    false: tokens.colors.border.default,
-                                    true: tokens.colors.brand.primary
-                                }}
-                                thumbColor={tokens.colors.semantic.surface}
+                                trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+                                thumbColor={colors.semantic.surface}
                             />
                         </View>
                     </Card>
 
-                    {/* Data */}
                     <Text style={styles.sectionTitle}>Data Management</Text>
                     <Card style={styles.settingCard}>
                         <TouchableOpacity style={styles.settingRow} onPress={handleBackup}>
@@ -188,9 +199,7 @@ export const SettingsScreen: React.FC = () => {
                                 <Text style={styles.settingIcon}>☁️</Text>
                                 <View>
                                     <Text style={styles.settingLabel}>Backup Data</Text>
-                                    <Text style={styles.settingDescription}>
-                                        Export your data for safekeeping
-                                    </Text>
+                                    <Text style={styles.settingDescription}>Export your data for safekeeping</Text>
                                 </View>
                             </View>
                             <Text style={styles.actionArrow}>→</Text>
@@ -203,16 +212,13 @@ export const SettingsScreen: React.FC = () => {
                                 <Text style={styles.settingIcon}>⚠️</Text>
                                 <View>
                                     <Text style={styles.dangerLabel}>Clear All Data</Text>
-                                    <Text style={styles.settingDescription}>
-                                        Delete all sales, expenses, and credits
-                                    </Text>
+                                    <Text style={styles.settingDescription}>Delete all sales, expenses, and credits</Text>
                                 </View>
                             </View>
                             <Text style={styles.actionArrow}>→</Text>
                         </TouchableOpacity>
                     </Card>
 
-                    {/* About */}
                     <Text style={styles.sectionTitle}>About</Text>
                     <Card style={styles.settingCard}>
                         <View style={styles.aboutSection}>
@@ -222,6 +228,20 @@ export const SettingsScreen: React.FC = () => {
                         </View>
                     </Card>
 
+                    <Card style={styles.settingCard}>
+                        <Pressable style={styles.settingRow} onPress={handleEmailPress} onLongPress={handleCopyEmail}>
+                            <View style={styles.settingInfo}>
+                                <Text style={styles.settingIcon}>📧</Text>
+                                <View>
+                                    <Text style={styles.settingLabel}>Contact</Text>
+                                    <Text style={styles.emailText}>{CONTACT_EMAIL}</Text>
+                                </View>
+                            </View>
+                            <Text style={styles.actionArrow}>→</Text>
+                        </Pressable>
+                        <Text style={styles.contactHint}>Tap to email • Long press to copy</Text>
+                    </Card>
+
                     <View style={styles.bottomSpacer} />
                 </ScrollView>
             </Animated.View>
@@ -229,132 +249,35 @@ export const SettingsScreen: React.FC = () => {
     );
 };
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: tokens.colors.semantic.background,
-    },
-    content: {
-        flex: 1,
-        paddingHorizontal: tokens.spacing.md,
-    },
-    header: {
-        paddingTop: tokens.spacing.md,
-        paddingBottom: tokens.spacing.md,
-    },
-    title: {
-        fontSize: tokens.typography.sizes.xxl,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.brand.secondary,
-    },
-    subtitle: {
-        fontSize: tokens.typography.sizes.sm,
-        color: tokens.colors.text.secondary,
-    },
-    sectionTitle: {
-        fontSize: tokens.typography.sizes.md,
-        fontWeight: tokens.typography.weight.semibold,
-        color: tokens.colors.text.primary,
-        marginTop: tokens.spacing.lg,
-        marginBottom: tokens.spacing.sm,
-    },
-    settingCard: {
-        backgroundColor: tokens.colors.semantic.surface,
-        marginBottom: tokens.spacing.sm,
-    },
-    dangerCard: {
-        backgroundColor: tokens.colors.semantic.surface,
-        marginBottom: tokens.spacing.sm,
-        borderWidth: 1,
-        borderColor: tokens.colors.brand.primary,
-    },
-    settingRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    settingInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    settingIcon: {
-        fontSize: 24,
-        marginRight: tokens.spacing.sm,
-    },
-    settingLabel: {
-        fontSize: tokens.typography.sizes.md,
-        fontWeight: tokens.typography.weight.medium,
-        color: tokens.colors.text.primary,
-    },
-    dangerLabel: {
-        fontSize: tokens.typography.sizes.md,
-        fontWeight: tokens.typography.weight.medium,
-        color: tokens.colors.brand.primary,
-    },
-    settingDescription: {
-        fontSize: tokens.typography.sizes.xs,
-        color: tokens.colors.text.muted,
-        marginTop: tokens.spacing.xxs,
-    },
-    currencyValue: {
-        fontSize: tokens.typography.sizes.lg,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.brand.primary,
-    },
-    currencyPicker: {
-        marginTop: tokens.spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: tokens.colors.border.default,
-        paddingTop: tokens.spacing.sm,
-    },
-    currencyOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: tokens.spacing.sm,
-        paddingHorizontal: tokens.spacing.xs,
-        borderRadius: tokens.radius.sm,
-    },
-    currencySelected: {
-        backgroundColor: tokens.colors.semantic.soft,
-    },
-    currencyCode: {
-        fontSize: tokens.typography.sizes.lg,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.brand.secondary,
-        width: 40,
-    },
-    currencyName: {
-        fontSize: tokens.typography.sizes.sm,
-        color: tokens.colors.text.secondary,
-    },
-    actionArrow: {
-        fontSize: tokens.typography.sizes.lg,
-        color: tokens.colors.text.muted,
-    },
-    aboutSection: {
-        alignItems: 'center',
-        paddingVertical: tokens.spacing.md,
-    },
-    appName: {
-        fontSize: tokens.typography.sizes.xl,
-        fontWeight: tokens.typography.weight.bold,
-        color: tokens.colors.brand.secondary,
-    },
-    tagline: {
-        fontSize: tokens.typography.sizes.sm,
-        color: tokens.colors.text.muted,
-        fontStyle: 'italic',
-        marginTop: tokens.spacing.xxs,
-    },
-    version: {
-        fontSize: tokens.typography.sizes.xs,
-        color: tokens.colors.text.muted,
-        marginTop: tokens.spacing.sm,
-    },
-    bottomSpacer: {
-        height: tokens.spacing.xl,
-    },
+const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.semantic.background },
+    content: { flex: 1, paddingHorizontal: tokens.spacing.md },
+    header: { paddingTop: tokens.spacing.md, paddingBottom: tokens.spacing.md },
+    title: { fontSize: tokens.typography.sizes.xxl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
+    subtitle: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular },
+    sectionTitle: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, marginTop: tokens.spacing.lg, marginBottom: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.semibold },
+    settingCard: { backgroundColor: colors.semantic.surface, marginBottom: tokens.spacing.sm },
+    dangerCard: { backgroundColor: colors.semantic.surface, marginBottom: tokens.spacing.sm, borderWidth: 1, borderColor: colors.brand.primary },
+    settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    settingInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+    settingIcon: { fontSize: 24, marginRight: tokens.spacing.sm },
+    settingLabel: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
+    dangerLabel: { fontSize: tokens.typography.sizes.md, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium },
+    settingDescription: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
+    emailText: { fontSize: tokens.typography.sizes.sm, color: colors.brand.primary, marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
+    contactHint: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, textAlign: 'center', marginTop: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.regular },
+    currencyValue: { fontSize: tokens.typography.sizes.lg, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.bold },
+    currencyPicker: { marginTop: tokens.spacing.md, borderTopWidth: 1, borderTopColor: colors.border.default, paddingTop: tokens.spacing.sm },
+    currencyOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.xs, borderRadius: tokens.radius.sm },
+    currencySelected: { backgroundColor: colors.semantic.soft },
+    currencyCode: { fontSize: tokens.typography.sizes.lg, color: colors.brand.secondary, width: 40, fontFamily: tokens.typography.fontFamily.bold },
+    currencyName: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular },
+    actionArrow: { fontSize: tokens.typography.sizes.lg, color: colors.text.muted },
+    aboutSection: { alignItems: 'center', paddingVertical: tokens.spacing.md },
+    appName: { fontSize: tokens.typography.sizes.xl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
+    tagline: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, fontStyle: 'italic', marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
+    version: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, marginTop: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.regular },
+    bottomSpacer: { height: tokens.spacing.xl + 80 },
 });
 
 export default SettingsScreen;

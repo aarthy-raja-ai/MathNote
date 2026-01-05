@@ -9,9 +9,19 @@ interface AppState {
     isLoading: boolean;
 }
 
+// Input type for adding a sale (without id and linkedCreditId)
+interface AddSaleInput {
+    date: string;
+    customerName: string;
+    totalAmount: number;
+    paidAmount: number;
+    paymentMethod: 'Cash' | 'UPI';
+    note: string;
+}
+
 interface AppContextType extends AppState {
     // Sales
-    addSale: (sale: Omit<Sale, 'id'>) => Promise<void>;
+    addSale: (sale: AddSaleInput) => Promise<void>;
     updateSale: (id: string, sale: Partial<Sale>) => Promise<void>;
     deleteSale: (id: string) => Promise<void>;
     // Expenses
@@ -24,6 +34,8 @@ interface AppContextType extends AppState {
     deleteCredit: (id: string) => Promise<void>;
     // Settings
     updateSettings: (settings: Partial<Settings>) => Promise<void>;
+    // Data Management
+    clearAllData: () => Promise<boolean>;
     // Computed
     getTodaySales: () => number;
     getTodayExpenses: () => number;
@@ -59,7 +71,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 storage.getCredits(),
                 storage.getSettings(),
             ]);
-            // Ensure settings.lock is always a boolean to prevent type casting errors
             const safeSettings = settings ? {
                 ...settings,
                 lock: Boolean(settings.lock),
@@ -76,13 +87,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loadData();
     }, []);
 
-    // Sales
-    const addSale = useCallback(async (sale: Omit<Sale, 'id'>) => {
-        const newSale: Sale = { ...sale, id: generateId() };
+    // Sales - with partial payment logic
+    const addSale = useCallback(async (saleInput: AddSaleInput) => {
+        const saleId = generateId();
+        let linkedCreditId: string | undefined;
+        let newCredits = [...state.credits];
+
+        // Check if this is a partial payment
+        const remainingAmount = saleInput.totalAmount - saleInput.paidAmount;
+        if (remainingAmount > 0 && saleInput.customerName.trim()) {
+            // Auto-create credit for the remaining balance
+            const creditId = generateId();
+            linkedCreditId = creditId;
+
+            const newCredit: Credit = {
+                id: creditId,
+                party: saleInput.customerName,
+                type: 'given', // Customer owes us money
+                amount: remainingAmount,
+                status: 'pending',
+                date: saleInput.date,
+                linkedSaleId: saleId,
+            };
+            newCredits = [...newCredits, newCredit];
+            await storage.setCredits(newCredits);
+        }
+
+        const newSale: Sale = {
+            id: saleId,
+            date: saleInput.date,
+            customerName: saleInput.customerName,
+            totalAmount: saleInput.totalAmount,
+            paidAmount: saleInput.paidAmount,
+            paymentMethod: saleInput.paymentMethod,
+            note: saleInput.note,
+            linkedCreditId,
+        };
+
         const newSales = [...state.sales, newSale];
         await storage.setSales(newSales);
-        setState((prev) => ({ ...prev, sales: newSales }));
-    }, [state.sales]);
+        setState((prev) => ({ ...prev, sales: newSales, credits: newCredits }));
+    }, [state.sales, state.credits]);
 
     const updateSale = useCallback(async (id: string, updates: Partial<Sale>) => {
         const newSales = state.sales.map((s) => (s.id === id ? { ...s, ...updates } : s));
@@ -91,10 +136,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, [state.sales]);
 
     const deleteSale = useCallback(async (id: string) => {
+        const sale = state.sales.find((s) => s.id === id);
+        let newCredits = [...state.credits];
+
+        // Also delete linked credit if exists
+        if (sale?.linkedCreditId) {
+            newCredits = newCredits.filter((c) => c.id !== sale.linkedCreditId);
+            await storage.setCredits(newCredits);
+        }
+
         const newSales = state.sales.filter((s) => s.id !== id);
         await storage.setSales(newSales);
-        setState((prev) => ({ ...prev, sales: newSales }));
-    }, [state.sales]);
+        setState((prev) => ({ ...prev, sales: newSales, credits: newCredits }));
+    }, [state.sales, state.credits]);
 
     // Expenses
     const addExpense = useCallback(async (expense: Omit<Expense, 'id'>) => {
@@ -143,24 +197,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState((prev) => ({ ...prev, settings: newSettings }));
     }, [state.settings]);
 
-    // Computed values
+    // Clear all data
+    const clearAllData = useCallback(async () => {
+        const success = await storage.clearAllData();
+        if (success) {
+            setState({
+                sales: [],
+                expenses: [],
+                credits: [],
+                settings: defaultSettings,
+                isLoading: false,
+            });
+        }
+        return success;
+    }, []);
+
+    // Computed values - use paidAmount for actual cash received (with legacy fallback)
     const getTodaySales = useCallback(() => {
         const today = getToday();
         return state.sales
             .filter((s) => s.date === today)
-            .reduce((sum, s) => sum + s.amount, 0);
+            .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
     }, [state.sales]);
 
     const getTodayExpenses = useCallback(() => {
         const today = getToday();
         return state.expenses
             .filter((e) => e.date === today)
-            .reduce((sum, e) => sum + e.amount, 0);
+            .reduce((sum, e) => sum + (e.amount ?? 0), 0);
     }, [state.expenses]);
 
     const getBalance = useCallback(() => {
-        const totalSales = state.sales.reduce((sum, s) => sum + s.amount, 0);
-        const totalExpenses = state.expenses.reduce((sum, e) => sum + e.amount, 0);
+        const totalSales = state.sales.reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
+        const totalExpenses = state.expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
         return totalSales - totalExpenses;
     }, [state.sales, state.expenses]);
 
@@ -178,6 +247,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 updateCredit,
                 deleteCredit,
                 updateSettings,
+                clearAllData,
                 getTodaySales,
                 getTodayExpenses,
                 getBalance,
