@@ -5,10 +5,10 @@ import { View, StyleSheet, Platform } from 'react-native';
 import {
     LayoutDashboard,
     TrendingUp,
-    Receipt,
-    Handshake,
+    Wallet,
+    CreditCard,
     BarChart3,
-    Settings,
+    Settings2,
 } from 'lucide-react-native';
 import {
     DashboardScreen,
@@ -55,10 +55,10 @@ const iconStyles = StyleSheet.create({
 const tabScreens = [
     { name: 'Dashboard', component: DashboardScreen, icon: LayoutDashboard, label: 'Home' },
     { name: 'Sales', component: SalesScreen, icon: TrendingUp, label: 'Sales' },
-    { name: 'Expenses', component: ExpensesScreen, icon: Receipt, label: 'Expenses' },
-    { name: 'Credits', component: CreditsScreen, icon: Handshake, label: 'Credits' },
+    { name: 'Expenses', component: ExpensesScreen, icon: Wallet, label: 'Expenses' },
+    { name: 'Credits', component: CreditsScreen, icon: CreditCard, label: 'Credits' },
     { name: 'Reports', component: ReportsScreen, icon: BarChart3, label: 'Reports' },
-    { name: 'Settings', component: SettingsScreen, icon: Settings, label: 'Settings' },
+    { name: 'Settings', component: SettingsScreen, icon: Settings2, label: 'Settings' },
 ];
 
 export const AppNavigator: React.FC = () => {

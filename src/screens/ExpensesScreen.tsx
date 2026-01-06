@@ -11,19 +11,20 @@ import {
     Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2 } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Expense } from '../utils/storage';
 
 const CATEGORIES = [
-    { id: 'food', label: 'Food & Dining', icon: '🍔' },
-    { id: 'transport', label: 'Transport', icon: '🚗' },
-    { id: 'shopping', label: 'Shopping', icon: '🛒' },
-    { id: 'utilities', label: 'Utilities', icon: '💡' },
-    { id: 'rent', label: 'Rent', icon: '🏠' },
-    { id: 'salary', label: 'Salary', icon: '💼' },
-    { id: 'other', label: 'Other', icon: '📦' },
+    { id: 'food', label: 'Food & Dining', Icon: Utensils },
+    { id: 'transport', label: 'Transport', Icon: Car },
+    { id: 'shopping', label: 'Shopping', Icon: ShoppingCart },
+    { id: 'utilities', label: 'Utilities', Icon: Lightbulb },
+    { id: 'rent', label: 'Rent', Icon: Home },
+    { id: 'salary', label: 'Salary', Icon: Briefcase },
+    { id: 'other', label: 'Other', Icon: Package },
 ];
 
 export const ExpensesScreen: React.FC = () => {
@@ -100,7 +101,7 @@ export const ExpensesScreen: React.FC = () => {
             <Card style={styles.expenseCard}>
                 <View style={styles.expenseRow}>
                     <View style={styles.categoryIcon}>
-                        <Text style={styles.iconText}>{catInfo.icon}</Text>
+                        <catInfo.Icon size={22} color={colors.text.primary} strokeWidth={2} />
                     </View>
                     <View style={styles.expenseInfo}>
                         <Text style={styles.expenseCategory}>{catInfo.label}</Text>
@@ -109,10 +110,10 @@ export const ExpensesScreen: React.FC = () => {
                     </View>
                     <View style={styles.expenseActions}>
                         <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                            <Text>✏️</Text>
+                            <Pencil size={18} color={colors.text.muted} strokeWidth={2} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
-                            <Text>🗑️</Text>
+                            <Trash2 size={18} color={colors.text.muted} strokeWidth={2} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -168,7 +169,7 @@ export const ExpensesScreen: React.FC = () => {
                                         style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
                                         onPress={() => setCategory(cat.id)}
                                     >
-                                        <Text style={styles.categoryItemIcon}>{cat.icon}</Text>
+                                        <cat.Icon size={20} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
                                         <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]}>{cat.label}</Text>
                                     </TouchableOpacity>
                                 ))}

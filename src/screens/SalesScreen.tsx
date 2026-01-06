@@ -367,28 +367,28 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     totalAmount: { fontSize: tokens.typography.sizes.xxl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     listContent: { paddingBottom: 160 },
 
-    // Sale Card - Fixed layout
-    saleCard: { marginBottom: tokens.spacing.sm, backgroundColor: colors.semantic.surface, padding: 16 },
+    // Sale Card - Compact layout
+    saleCard: { marginBottom: tokens.spacing.xs, backgroundColor: colors.semantic.surface, padding: 12 },
     saleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
     // Left section - flex to take remaining space
-    leftSection: { flex: 1, minWidth: 0, gap: 4 },
+    leftSection: { flex: 1, minWidth: 0, gap: 2 },
 
     // Right section - fixed width for icons
     rightSection: { width: 64, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
 
-    customerName: { fontSize: 16, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.semibold, maxWidth: '100%' },
-    saleAmount: { fontSize: 18, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold, marginTop: 2 },
+    customerName: { fontSize: 15, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.semibold, maxWidth: '100%' },
+    saleAmount: { fontSize: 16, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
 
     // Badges row with wrap
-    badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-    partialBadge: { height: 24, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center' },
-    partialText: { fontSize: tokens.typography.sizes.xs, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.medium },
-    paymentBadge: { height: 24, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.semantic.soft, alignItems: 'center', justifyContent: 'center' },
-    paymentBadgeText: { fontSize: tokens.typography.sizes.xs, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.medium },
+    badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+    partialBadge: { height: 20, paddingHorizontal: 8, borderRadius: 10, backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center' },
+    partialText: { fontSize: 10, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.medium },
+    paymentBadge: { height: 20, paddingHorizontal: 8, borderRadius: 10, backgroundColor: colors.semantic.soft, alignItems: 'center', justifyContent: 'center' },
+    paymentBadgeText: { fontSize: 10, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.medium },
 
-    balanceText: { fontSize: 13, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular, marginTop: 2 },
-    saleNote: { fontSize: 13, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular, marginTop: 2 },
+    balanceText: { fontSize: 12, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
+    saleNote: { fontSize: 12, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular },
 
     actionBtn: { padding: 6 },
 

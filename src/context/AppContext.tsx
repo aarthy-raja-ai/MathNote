@@ -36,6 +36,7 @@ interface AppContextType extends AppState {
     updateSettings: (settings: Partial<Settings>) => Promise<void>;
     // Data Management
     clearAllData: () => Promise<boolean>;
+    restoreData: (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) => Promise<boolean>;
     // Computed
     getTodaySales: () => number;
     getTodayExpenses: () => number;
@@ -212,6 +213,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return success;
     }, []);
 
+    // Restore data from backup
+    const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) => {
+        const success = await storage.importAllData(data);
+        if (success) {
+            setState({
+                sales: data.sales || [],
+                expenses: data.expenses || [],
+                credits: data.credits || [],
+                settings: data.settings ? { ...data.settings, lock: Boolean(data.settings.lock) } : defaultSettings,
+                isLoading: false,
+            });
+        }
+        return success;
+    }, []);
+
     // Computed values - use paidAmount for actual cash received (with legacy fallback)
     const getTodaySales = useCallback(() => {
         const today = getToday();
@@ -248,6 +264,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 deleteCredit,
                 updateSettings,
                 clearAllData,
+                restoreData,
                 getTodaySales,
                 getTodayExpenses,
                 getBalance,

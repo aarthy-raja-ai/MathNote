@@ -13,10 +13,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import storage from '../utils/storage';
 
 const CURRENCIES = [
@@ -29,7 +33,7 @@ const CURRENCIES = [
 const CONTACT_EMAIL = 'raarthyraja@gmail.com';
 
 export const SettingsScreen: React.FC = () => {
-    const { settings, updateSettings, clearAllData } = useApp();
+    const { settings, updateSettings, clearAllData, restoreData } = useApp();
     const { mode, toggleTheme, colors, isDark } = useTheme();
     const navigation = useNavigation<any>();
     const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
@@ -62,13 +66,75 @@ export const SettingsScreen: React.FC = () => {
     const handleBackup = async () => {
         try {
             const data = await storage.exportAllData();
-            Alert.alert(
-                'Backup Ready',
-                `Your data has been prepared for backup.\n\nSales: ${(data.sales || []).length}\nExpenses: ${(data.expenses || []).length}\nCredits: ${(data.credits || []).length}\n\nExported at: ${new Date(data.exportedAt).toLocaleString()}`,
-                [{ text: 'OK' }]
-            );
+            const jsonData = JSON.stringify(data, null, 2);
+
+            // Create file in cache directory
+            const fileName = `mathnote_backup_${new Date().toISOString().split('T')[0]}.json`;
+            const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+
+            await FileSystem.writeAsStringAsync(filePath, jsonData);
+
+            // Check if sharing is available
+            if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(filePath, {
+                    mimeType: 'application/json',
+                    dialogTitle: 'Save Backup File',
+                });
+            } else {
+                // Fallback to clipboard
+                await Clipboard.setStringAsync(jsonData);
+                Alert.alert(
+                    'Backup Ready',
+                    `Sharing not available. Data copied to clipboard.\n\nSales: ${(data.sales || []).length}\nExpenses: ${(data.expenses || []).length}\nCredits: ${(data.credits || []).length}`,
+                    [{ text: 'OK' }]
+                );
+            }
         } catch (error) {
             Alert.alert('Error', 'Failed to create backup');
+        }
+    };
+
+    const handleRestore = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/json',
+                copyToCacheDirectory: true,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const fileUri = result.assets[0].uri;
+                const fileContent = await FileSystem.readAsStringAsync(fileUri);
+                const data = JSON.parse(fileContent);
+
+                // Validate backup data
+                if (!data || typeof data !== 'object') {
+                    Alert.alert('Error', 'Invalid backup file format');
+                    return;
+                }
+
+                Alert.alert(
+                    'Restore Data',
+                    `Found:\n• ${(data.sales || []).length} sales\n• ${(data.expenses || []).length} expenses\n• ${(data.credits || []).length} credits\n\nThis will replace all current data. Continue?`,
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                            text: 'Restore',
+                            style: 'destructive',
+                            onPress: async () => {
+                                const success = await restoreData(data);
+                                if (success) {
+                                    Alert.alert('Success', 'Data restored successfully!');
+                                    navigation.navigate('Dashboard');
+                                } else {
+                                    Alert.alert('Error', 'Failed to restore data');
+                                }
+                            },
+                        },
+                    ]
+                );
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Failed to read backup file. Make sure it\'s a valid JSON file.');
         }
     };
 
@@ -127,7 +193,9 @@ export const SettingsScreen: React.FC = () => {
                     <Card style={styles.settingCard}>
                         <View style={styles.settingRow}>
                             <View style={styles.settingInfo}>
-                                <Text style={styles.settingIcon}>🌙</Text>
+                                <View style={styles.iconWrapper}>
+                                    <Moon size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
                                 <View>
                                     <Text style={styles.settingLabel}>Dark Mode</Text>
                                     <Text style={styles.settingDescription}>Switch between light and dark theme</Text>
@@ -146,7 +214,9 @@ export const SettingsScreen: React.FC = () => {
                     <Card style={styles.settingCard}>
                         <TouchableOpacity style={styles.settingRow} onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}>
                             <View style={styles.settingInfo}>
-                                <Text style={styles.settingIcon}>💰</Text>
+                                <View style={styles.iconWrapper}>
+                                    <Coins size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
                                 <View>
                                     <Text style={styles.settingLabel}>Currency</Text>
                                     <Text style={styles.settingDescription}>
@@ -177,7 +247,9 @@ export const SettingsScreen: React.FC = () => {
                     <Card style={styles.settingCard}>
                         <View style={styles.settingRow}>
                             <View style={styles.settingInfo}>
-                                <Text style={styles.settingIcon}>🔒</Text>
+                                <View style={styles.iconWrapper}>
+                                    <Lock size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
                                 <View>
                                     <Text style={styles.settingLabel}>App Lock</Text>
                                     <Text style={styles.settingDescription}>Require authentication to open app</Text>
@@ -196,26 +268,45 @@ export const SettingsScreen: React.FC = () => {
                     <Card style={styles.settingCard}>
                         <TouchableOpacity style={styles.settingRow} onPress={handleBackup}>
                             <View style={styles.settingInfo}>
-                                <Text style={styles.settingIcon}>☁️</Text>
+                                <View style={styles.iconWrapper}>
+                                    <CloudUpload size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
                                 <View>
                                     <Text style={styles.settingLabel}>Backup Data</Text>
-                                    <Text style={styles.settingDescription}>Export your data for safekeeping</Text>
+                                    <Text style={styles.settingDescription}>Save data as JSON file</Text>
                                 </View>
                             </View>
-                            <Text style={styles.actionArrow}>→</Text>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
+                        </TouchableOpacity>
+                    </Card>
+
+                    <Card style={styles.settingCard}>
+                        <TouchableOpacity style={styles.settingRow} onPress={handleRestore}>
+                            <View style={styles.settingInfo}>
+                                <View style={styles.iconWrapper}>
+                                    <CloudDownload size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>Restore Data</Text>
+                                    <Text style={styles.settingDescription}>Import data from a backup JSON file</Text>
+                                </View>
+                            </View>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
                         </TouchableOpacity>
                     </Card>
 
                     <Card style={styles.dangerCard}>
                         <TouchableOpacity style={styles.settingRow} onPress={handleClearData}>
                             <View style={styles.settingInfo}>
-                                <Text style={styles.settingIcon}>⚠️</Text>
+                                <View style={styles.iconWrapper}>
+                                    <AlertTriangle size={20} color={colors.brand.primary} strokeWidth={2} />
+                                </View>
                                 <View>
                                     <Text style={styles.dangerLabel}>Clear All Data</Text>
                                     <Text style={styles.settingDescription}>Delete all sales, expenses, and credits</Text>
                                 </View>
                             </View>
-                            <Text style={styles.actionArrow}>→</Text>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
                         </TouchableOpacity>
                     </Card>
 
@@ -231,13 +322,15 @@ export const SettingsScreen: React.FC = () => {
                     <Card style={styles.settingCard}>
                         <Pressable style={styles.settingRow} onPress={handleEmailPress} onLongPress={handleCopyEmail}>
                             <View style={styles.settingInfo}>
-                                <Text style={styles.settingIcon}>📧</Text>
+                                <View style={styles.iconWrapper}>
+                                    <Mail size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
                                 <View>
                                     <Text style={styles.settingLabel}>Contact</Text>
                                     <Text style={styles.emailText}>{CONTACT_EMAIL}</Text>
                                 </View>
                             </View>
-                            <Text style={styles.actionArrow}>→</Text>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
                         </Pressable>
                         <Text style={styles.contactHint}>Tap to email • Long press to copy</Text>
                     </Card>
@@ -260,7 +353,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     dangerCard: { backgroundColor: colors.semantic.surface, marginBottom: tokens.spacing.sm, borderWidth: 1, borderColor: colors.brand.primary },
     settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     settingInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    settingIcon: { fontSize: 24, marginRight: tokens.spacing.sm },
+    iconWrapper: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.semantic.soft, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
     settingLabel: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     dangerLabel: { fontSize: tokens.typography.sizes.md, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium },
     settingDescription: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },

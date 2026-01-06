@@ -11,7 +11,7 @@ import {
     Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2 } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
@@ -146,10 +146,10 @@ export const CreditsScreen: React.FC = () => {
                             )}
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                            <Text>✏️</Text>
+                            <Pencil size={18} color={colors.text.muted} strokeWidth={2} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
-                            <Text>🗑️</Text>
+                            <Trash2 size={18} color={colors.text.muted} strokeWidth={2} />
                         </TouchableOpacity>
                     </View>
                 </View>

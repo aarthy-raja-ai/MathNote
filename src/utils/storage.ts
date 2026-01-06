@@ -76,6 +76,32 @@ export const storage = {
         return { sales, expenses, credits, settings, exportedAt: new Date().toISOString() };
     },
 
+    // Restore from backup
+    async importAllData(data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) {
+        try {
+            const operations: Promise<boolean>[] = [];
+
+            if (data.sales && Array.isArray(data.sales)) {
+                operations.push(this.setSales(data.sales));
+            }
+            if (data.expenses && Array.isArray(data.expenses)) {
+                operations.push(this.setExpenses(data.expenses));
+            }
+            if (data.credits && Array.isArray(data.credits)) {
+                operations.push(this.setCredits(data.credits));
+            }
+            if (data.settings) {
+                operations.push(this.setSettings(data.settings));
+            }
+
+            await Promise.all(operations);
+            return true;
+        } catch (error) {
+            console.error('Failed to import data:', error);
+            return false;
+        }
+    },
+
     // Clear all data
     async clearAllData() {
         try {

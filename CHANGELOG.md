@@ -2,6 +2,33 @@
 
 All notable changes to Math Note are documented in this file.
 
+## [1.2.0] - 2026-01-06
+
+### ✨ New Features
+
+#### Lucide Icons Everywhere
+- Replaced all remaining emoji icons with **lucide-react-native** icons
+- Credits screen: Plus, CircleArrowUp, CircleArrowDown icons
+- Expenses screen: Plus, Tag, Trash2, Pencil icons
+- Sales screen: Plus, IndianRupee, Trash2, Pencil icons
+- Settings screen: Moon, Sun, Download, Upload, Trash2, ChevronRight icons
+- Bottom tab bar: Home, ShoppingCart, Wallet, CreditCard, BarChart3, Settings icons
+
+#### Data Restore Feature
+- Added **Restore Data** option in Settings screen
+- Import JSON backup files using document picker
+- Validates backup file structure before restoring
+- Confirmation dialog before overwriting existing data
+- Success/error feedback with alerts
+
+### 🐛 Bug Fixes
+
+- Fixed icon consistency across all navigation tabs
+- Improved Settings screen layout and spacing
+- Better icon sizing and color theming
+
+---
+
 ## [1.1.0] - 2026-01-05
 
 ### ✨ New Features
