@@ -134,14 +134,23 @@ export interface Expense {
     note: string;
 }
 
+export interface CreditPayment {
+    id: string;
+    amount: number;
+    date: string;
+    note?: string;
+}
+
 export interface Credit {
     id: string;
     party: string;
     type: 'given' | 'taken';
-    amount: number;
+    amount: number;         // Total original amount
+    paidAmount: number;     // Sum of all payments
     status: 'paid' | 'pending';
     date: string;
-    linkedSaleId?: string;          // Reference to originating sale (if auto-created from partial payment)
+    linkedSaleId?: string;
+    payments?: CreditPayment[]; // History of partial payments
 }
 
 export interface Settings {

@@ -41,6 +41,8 @@ interface AppContextType extends AppState {
     getTodaySales: () => number;
     getTodayExpenses: () => number;
     getBalance: () => number;
+    // Credit Payments
+    addCreditPayment: (creditId: string, payment: Omit<CreditPayment, 'id'>) => Promise<void>;
 }
 
 const defaultSettings: Settings = {
@@ -106,9 +108,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 party: saleInput.customerName,
                 type: 'given', // Customer owes us money
                 amount: remainingAmount,
+                paidAmount: 0,
                 status: 'pending',
                 date: saleInput.date,
                 linkedSaleId: saleId,
+                payments: [],
             };
             newCredits = [...newCredits, newCredit];
             await storage.setCredits(newCredits);
@@ -172,15 +176,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, [state.expenses]);
 
     // Credits
-    const addCredit = useCallback(async (credit: Omit<Credit, 'id'>) => {
-        const newCredit: Credit = { ...credit, id: generateId() };
+    const addCredit = useCallback(async (credit: Omit<Credit, 'id' | 'paidAmount' | 'payments'>) => {
+        const newCredit: Credit = {
+            ...credit,
+            id: generateId(),
+            paidAmount: 0,
+            payments: [],
+        };
         const newCredits = [...state.credits, newCredit];
         await storage.setCredits(newCredits);
         setState((prev) => ({ ...prev, credits: newCredits }));
     }, [state.credits]);
 
     const updateCredit = useCallback(async (id: string, updates: Partial<Credit>) => {
-        const newCredits = state.credits.map((c) => (c.id === id ? { ...c, ...updates } : c));
+        const newCredits = state.credits.map((c) => {
+            if (c.id === id) {
+                const updated = { ...c, ...updates };
+                // Auto-update status based on payments
+                if (updated.paidAmount >= updated.amount) {
+                    updated.status = 'paid';
+                } else {
+                    updated.status = 'pending';
+                }
+                return updated;
+            }
+            return c;
+        });
+        await storage.setCredits(newCredits);
+        setState((prev) => ({ ...prev, credits: newCredits }));
+    }, [state.credits]);
+
+    const addCreditPayment = useCallback(async (creditId: string, payment: Omit<CreditPayment, 'id'>) => {
+        const newCredits = state.credits.map((c) => {
+            if (c.id === creditId) {
+                const newPayment: CreditPayment = { ...payment, id: generateId() };
+                const payments = [...(c.payments || []), newPayment];
+                const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+                const status = paidAmount >= c.amount ? 'paid' : 'pending';
+                return { ...c, payments, paidAmount, status };
+            }
+            return c;
+        });
         await storage.setCredits(newCredits);
         setState((prev) => ({ ...prev, credits: newCredits }));
     }, [state.credits]);
@@ -268,6 +304,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 getTodaySales,
                 getTodayExpenses,
                 getBalance,
+                addCreditPayment,
             }}
         >
             {children}

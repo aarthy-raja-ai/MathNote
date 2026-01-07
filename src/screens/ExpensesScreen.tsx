@@ -9,6 +9,8 @@ import {
     TouchableOpacity,
     Alert,
     Pressable,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2 } from 'lucide-react-native';
@@ -155,7 +157,10 @@ export const ExpensesScreen: React.FC = () => {
             </Pressable>
 
             <Modal visible={modalVisible} animationType="slide" transparent={true}>
-                <View style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.modalOverlay}
+                >
                     <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
                     <View style={styles.bottomSheet}>
                         <View style={styles.handleContainer}><View style={styles.handleBar} /></View>
@@ -186,7 +191,7 @@ export const ExpensesScreen: React.FC = () => {
                             </View>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
         </SafeAreaView>
     );

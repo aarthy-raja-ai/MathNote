@@ -67,15 +67,16 @@ export const AppNavigator: React.FC = () => {
     const tabBarStyle = useMemo(() => ({
         backgroundColor: colors.semantic.surface,
         borderTopWidth: 0,
-        height: 68,
-        paddingBottom: 8,
-        paddingTop: 8,
+        height: 72,
+        paddingBottom: 12,
+        paddingTop: 12,
         borderTopLeftRadius: tokens.radius.xxl,
         borderTopRightRadius: tokens.radius.xxl,
         position: 'absolute' as const,
-        left: 0,
-        right: 0,
-        bottom: 0,
+        left: 16,
+        right: 16,
+        bottom: 12,
+        borderRadius: tokens.radius.xl,
         ...Platform.select({
             ios: {
                 shadowColor: '#000',

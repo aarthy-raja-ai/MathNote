@@ -9,23 +9,30 @@ import {
     TouchableOpacity,
     Alert,
     Pressable,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2 } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
-import { Credit } from '../utils/storage';
+import { Credit, CreditPayment } from '../utils/storage';
 
 export const CreditsScreen: React.FC = () => {
-    const { credits, addCredit, updateCredit, deleteCredit, settings, sales } = useApp();
+    const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
+    const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+    const [historyModalVisible, setHistoryModalVisible] = useState(false);
+    const [selectedCredit, setSelectedCredit] = useState<Credit | null>(null);
     const [editingCredit, setEditingCredit] = useState<Credit | null>(null);
     const [amount, setAmount] = useState('');
+    const [paymentAmount, setPaymentAmount] = useState('');
     const [party, setParty] = useState('');
     const [type, setType] = useState<'given' | 'taken'>('given');
     const [filter, setFilter] = useState<'all' | 'given' | 'taken'>('all');
+    const [dateFilter, setDateFilter] = useState<string>(''); // YYYY-MM-DD
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const today = new Date().toISOString().split('T')[0];
@@ -76,6 +83,33 @@ export const CreditsScreen: React.FC = () => {
         await updateCredit(credit.id, { status: newStatus });
     };
 
+    const handleRecordPayment = (credit: Credit) => {
+        setSelectedCredit(credit);
+        setPaymentAmount('');
+        setPaymentModalVisible(true);
+    };
+
+    const handleViewHistory = (credit: Credit) => {
+        setSelectedCredit(credit);
+        setHistoryModalVisible(true);
+    };
+
+    const handleSavePayment = async () => {
+        const parsedAmount = parseFloat(paymentAmount);
+        if (isNaN(parsedAmount) || parsedAmount <= 0) {
+            Alert.alert('Error', 'Please enter a valid amount');
+            return;
+        }
+        if (selectedCredit) {
+            await addCreditPayment(selectedCredit.id, {
+                amount: parsedAmount,
+                date: today,
+            });
+            setPaymentModalVisible(false);
+            setSelectedCredit(null);
+        }
+    };
+
     const handleSave = async () => {
         const parsedAmount = parseFloat(amount);
         if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -96,8 +130,9 @@ export const CreditsScreen: React.FC = () => {
     };
 
     const filteredCredits = credits.filter((c) => {
-        if (filter === 'all') return true;
-        return c.type === filter;
+        const matchesType = filter === 'all' || c.type === filter;
+        const matchesDate = !dateFilter || c.date === dateFilter;
+        return matchesType && matchesDate;
     });
 
     const pendingGiven = credits.filter((c) => c.type === 'given' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
@@ -135,15 +170,18 @@ export const CreditsScreen: React.FC = () => {
                         <Text style={[styles.creditAmount, item.type === 'given' ? styles.givenAmount : styles.takenAmount]}>
                             {currency} {item.amount.toLocaleString()}
                         </Text>
+                        <View style={styles.paymentStatusRow}>
+                            <Text style={styles.paidBadge}>Paid: {currency}{item.paidAmount?.toLocaleString() || 0}</Text>
+                            <Text style={styles.dueBadge}>Due: {currency}{(item.amount - (item.paidAmount || 0)).toLocaleString()}</Text>
+                        </View>
                         <Text style={styles.creditDate}>{new Date(item.date).toLocaleDateString('en-IN')}</Text>
                     </View>
                     <View style={styles.creditActions}>
-                        <TouchableOpacity onPress={() => handleToggleStatus(item)} style={styles.statusBtn}>
-                            {item.status === 'pending' ? (
-                                <Clock size={20} color={colors.text.muted} strokeWidth={2} />
-                            ) : (
-                                <CheckCircle size={20} color={colors.semantic.success} strokeWidth={2} />
-                            )}
+                        <TouchableOpacity onPress={() => handleRecordPayment(item)} style={styles.actionBtn}>
+                            <PlusCircle size={20} color={colors.semantic.success} strokeWidth={2} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleViewHistory(item)} style={styles.actionBtn}>
+                            <History size={20} color={colors.brand.secondary} strokeWidth={2} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
                             <Pencil size={18} color={colors.text.muted} strokeWidth={2} />
@@ -154,6 +192,7 @@ export const CreditsScreen: React.FC = () => {
                     </View>
                 </View>
             </Card>
+
         );
     };
 
@@ -177,13 +216,26 @@ export const CreditsScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.filterTabs}>
-                    {(['all', 'given', 'taken'] as const).map((f) => (
-                        <TouchableOpacity key={f} style={[styles.filterTab, filter === f && styles.filterActive]} onPress={() => setFilter(f)}>
-                            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                                {f.charAt(0).toUpperCase() + f.slice(1)}
-                            </Text>
+                    <View style={styles.filterRow}>
+                        <View style={styles.tabsContainer}>
+                            {(['all', 'given', 'taken'] as const).map((f) => (
+                                <TouchableOpacity key={f} style={[styles.filterTab, filter === f && styles.filterActive]} onPress={() => setFilter(f)}>
+                                    <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
+                                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                        <TouchableOpacity
+                            style={[styles.dateFilterBtn, dateFilter && styles.dateFilterActive]}
+                            onPress={() => {
+                                if (dateFilter) setDateFilter('');
+                                else setDateFilter(today);
+                            }}
+                        >
+                            <Calendar size={18} color={dateFilter ? colors.text.inverse : colors.text.secondary} />
                         </TouchableOpacity>
-                    ))}
+                    </View>
                 </View>
 
                 <FlatList
@@ -207,7 +259,10 @@ export const CreditsScreen: React.FC = () => {
             </Pressable>
 
             <Modal visible={modalVisible} animationType="slide" transparent={true}>
-                <View style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.modalOverlay}
+                >
                     <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
                     <View style={styles.bottomSheet}>
                         <View style={styles.handleContainer}><View style={styles.handleBar} /></View>
@@ -235,6 +290,63 @@ export const CreditsScreen: React.FC = () => {
                             </View>
                         </View>
                     </View>
+                </KeyboardAvoidingView>
+            </Modal>
+            {/* Record Payment Modal */}
+            <Modal visible={paymentModalVisible} animationType="fade" transparent={true}>
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={() => setPaymentModalVisible(false)} />
+                    <View style={styles.smallBottomSheet}>
+                        <View style={styles.sheetContent}>
+                            <Text style={styles.modalTitle}>Record Payment</Text>
+                            <Text style={styles.partyNameCenter}>{selectedCredit?.party}</Text>
+                            <Input label="Amount Paid" placeholder="Enter amount" keyboardType="numeric" value={paymentAmount} onChangeText={setPaymentAmount} />
+                            <View style={styles.modalButtons}>
+                                <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setPaymentModalVisible(false)}>
+                                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable style={[styles.modalBtn, styles.saveBtn]} onPress={handleSavePayment}>
+                                    <Text style={styles.saveBtnText}>Save Payment</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Payment History Modal */}
+            <Modal visible={historyModalVisible} animationType="slide" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={() => setHistoryModalVisible(false)} />
+                    <View style={styles.bottomSheetFull}>
+                        <View style={styles.handleContainer}><View style={styles.handleBar} /></View>
+                        <View style={styles.sheetContent}>
+                            <Text style={styles.modalTitle}>Payment History</Text>
+                            <Text style={styles.partyNameCenter}>{selectedCredit?.party}</Text>
+                            <FlatList
+                                data={selectedCredit?.payments || []}
+                                keyExtractor={(p) => p.id}
+                                renderItem={({ item }) => (
+                                    <View style={styles.paymentItem}>
+                                        <View>
+                                            <Text style={styles.paymentAmount}>{currency}{item.amount.toLocaleString()}</Text>
+                                            <Text style={styles.paymentDate}>{new Date(item.date).toLocaleDateString('en-IN')}</Text>
+                                        </View>
+                                        <CheckCircle size={18} color={colors.semantic.success} />
+                                    </View>
+                                )}
+                                ListEmptyComponent={
+                                    <View style={styles.emptyHistory}>
+                                        <Text style={styles.emptyTextSmall}>No payments recorded yet</Text>
+                                    </View>
+                                }
+                                style={{ maxHeight: 300, marginTop: 20 }}
+                            />
+                            <Pressable style={[styles.modalBtn, styles.cancelBtn, { marginTop: 20 }]} onPress={() => setHistoryModalVisible(false)}>
+                                <Text style={styles.cancelBtnText}>Close</Text>
+                            </Pressable>
+                        </View>
+                    </View>
                 </View>
             </Modal>
         </SafeAreaView>
@@ -254,13 +366,17 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     summaryLabelLight: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.regular },
     summaryAmount: { fontSize: tokens.typography.sizes.xl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     summaryAmountLight: { fontSize: tokens.typography.sizes.xl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
-    filterTabs: { flexDirection: 'row', marginBottom: tokens.spacing.md, backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.pill, padding: tokens.spacing.xxs },
+    filterTabs: { marginBottom: tokens.spacing.md },
+    filterRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.sm },
+    tabsContainer: { flex: 1, flexDirection: 'row', backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.pill, padding: tokens.spacing.xxs },
     filterTab: { flex: 1, paddingVertical: tokens.spacing.xs, alignItems: 'center', borderRadius: tokens.radius.pill },
     filterActive: { backgroundColor: colors.brand.primary },
     filterText: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.medium },
     filterTextActive: { color: colors.text.inverse },
+    dateFilterBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.semantic.soft, justifyContent: 'center', alignItems: 'center' },
+    dateFilterActive: { backgroundColor: colors.brand.primary },
     creditCard: { marginBottom: tokens.spacing.sm, backgroundColor: colors.semantic.surface },
-    paidCard: { opacity: 0.6 },
+    paidCard: { opacity: 0.8 },
     creditRow: { flexDirection: 'row', alignItems: 'center' },
     typeIcon: { width: 40, height: 40, borderRadius: tokens.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
     givenIcon: { backgroundColor: 'rgba(129, 178, 154, 0.15)' },
@@ -268,13 +384,17 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     creditInfo: { flex: 1 },
     partyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     partyName: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
+    partyNameCenter: { fontSize: tokens.typography.sizes.md, color: colors.text.secondary, textAlign: 'center', marginBottom: tokens.spacing.md, fontFamily: tokens.typography.fontFamily.medium },
     linkedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.semantic.soft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
     linkedText: { fontSize: 10, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.medium },
     creditAmount: { fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.bold },
     givenAmount: { color: colors.semantic.success },
     takenAmount: { color: colors.brand.primary },
+    paymentStatusRow: { flexDirection: 'row', gap: 8, marginTop: 2, marginBottom: 4 },
+    paidBadge: { fontSize: 10, color: colors.semantic.success, backgroundColor: 'rgba(129, 178, 154, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontFamily: tokens.typography.fontFamily.medium },
+    dueBadge: { fontSize: 10, color: colors.brand.primary, backgroundColor: 'rgba(236, 11, 67, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontFamily: tokens.typography.fontFamily.medium },
     creditDate: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
-    creditActions: { flexDirection: 'row', alignItems: 'center' },
+    creditActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     statusBtn: { padding: tokens.spacing.xs },
     actionBtn: { padding: tokens.spacing.xs },
     emptyContainer: { alignItems: 'center', paddingVertical: tokens.spacing.xxl },
@@ -288,10 +408,12 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     modalOverlay: { flex: 1, justifyContent: 'flex-end' },
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
     bottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+    bottomSheetFull: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, minHeight: '50%' },
+    smallBottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, width: '100%' },
     handleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
     handleBar: { width: 40, height: 4, backgroundColor: colors.border.default, borderRadius: 2 },
     sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
-    modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.lg, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
+    modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.sm, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
     typeSelector: { flexDirection: 'row', marginBottom: tokens.spacing.md, gap: tokens.spacing.sm },
     typeOption: { flex: 1, padding: tokens.spacing.md, borderRadius: tokens.radius.md, backgroundColor: colors.semantic.soft, alignItems: 'center' },
     typeSelected: { backgroundColor: colors.semantic.success },
@@ -304,6 +426,11 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     cancelBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
     saveBtn: { backgroundColor: colors.brand.primary },
     saveBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
+    paymentItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border.default },
+    paymentAmount: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
+    paymentDate: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
+    emptyHistory: { alignItems: 'center', paddingVertical: 20 },
+    emptyTextSmall: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
 });
 
 export default CreditsScreen;
