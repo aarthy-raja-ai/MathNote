@@ -2,6 +2,40 @@
 
 All notable changes to Math Note are documented in this file.
 
+## [1.3.0] - 2026-01-08
+
+### ✨ New Features
+
+#### Interactive Charts 📊
+- Implemented **Pie Charts** for expense breakdown by category
+- Added **Line Charts** for 7-day sales trends
+- Dynamic animations and interactive legends
+- Visual indicators for empty data states
+
+#### Financial PDF Reports 📄
+- Generate professional **PDF reports** from within the app
+- Custom date range selection (Daily, Weekly, Monthly, All)
+- Includes Sales, Expenses, and Credit summaries
+- Integrated sharing via system sharing sheet
+
+#### App Lock & Security 🔒
+- Added **PIN & Biometric Lock** (FaceID/Fingerprint)
+- Configure lock settings in the Security section
+- Automatic re-lock when app enters background
+- Secure storage for authentication state
+
+#### Credit Due Reminders 🔔
+- Push notification system for pending credits
+- Toggle daily reminders in Settings
+- Local notifications for improved engagement
+
+### 🐛 Bug Fixes
+- Fixed data persistence for settings on app restart
+- Improved PDF export layout for high-density screens
+- Enhanced biometric authentication fallback flow
+
+---
+
 ## [1.2.0] - 2026-01-06
 
 ### ✨ New Features

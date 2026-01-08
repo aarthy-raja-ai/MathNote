@@ -13,10 +13,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight } from 'lucide-react-native';
+import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
+import notificationService from '../utils/notificationService';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -37,6 +38,7 @@ export const SettingsScreen: React.FC = () => {
     const { mode, toggleTheme, colors, isDark } = useTheme();
     const navigation = useNavigation<any>();
     const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+    const [remindersEnabled, setRemindersEnabled] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -61,6 +63,21 @@ export const SettingsScreen: React.FC = () => {
     const handleCurrencyChange = async (currency: string) => {
         await updateSettings({ currency });
         setShowCurrencyPicker(false);
+    };
+
+    const handleRemindersToggle = async () => {
+        const newValue = !remindersEnabled;
+        if (newValue) {
+            const hasPermission = await notificationService.requestPermissions();
+            if (!hasPermission) {
+                Alert.alert('Permission Required', 'Please enable notifications in your device settings.');
+                return;
+            }
+            await notificationService.scheduleDailySummary(true);
+        } else {
+            await notificationService.cancelAllReminders();
+        }
+        setRemindersEnabled(newValue);
     };
 
     const handleBackup = async () => {
@@ -241,6 +258,26 @@ export const SettingsScreen: React.FC = () => {
                                 ))}
                             </View>
                         )}
+                    </Card>
+
+                    <Card style={styles.settingCard}>
+                        <View style={styles.settingRow}>
+                            <View style={styles.settingInfo}>
+                                <View style={styles.iconWrapper}>
+                                    <Bell size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>Daily Reminders</Text>
+                                    <Text style={styles.settingDescription}>Get notified about pending credits</Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={remindersEnabled}
+                                onValueChange={handleRemindersToggle}
+                                trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+                                thumbColor={colors.semantic.surface}
+                            />
+                        </View>
                     </Card>
 
                     <Text style={styles.sectionTitle}>Security</Text>

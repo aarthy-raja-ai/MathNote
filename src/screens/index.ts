@@ -4,3 +4,4 @@ export { ExpensesScreen } from './ExpensesScreen';
 export { CreditsScreen } from './CreditsScreen';
 export { ReportsScreen } from './ReportsScreen';
 export { SettingsScreen } from './SettingsScreen';
+export { LockScreen } from './LockScreen';

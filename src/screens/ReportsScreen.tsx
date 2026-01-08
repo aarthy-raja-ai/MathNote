@@ -9,18 +9,22 @@ import {
     Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PieChart, LineChart } from 'react-native-chart-kit';
+import { FileText } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
+import pdfService from '../utils/pdfService';
 
 type DateRange = 'daily' | 'weekly' | 'monthly' | 'all';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ReportsScreen: React.FC = () => {
-    const { sales, expenses, settings } = useApp();
+    const { sales, expenses, credits, settings } = useApp();
     const { colors } = useTheme();
     const [range, setRange] = useState<DateRange>('weekly');
+    const [isExporting, setIsExporting] = useState(false);
     const chartAnim = useRef(new Animated.Value(0)).current;
     const currency = settings.currency;
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -71,21 +75,100 @@ export const ReportsScreen: React.FC = () => {
         return acc;
     }, {} as Record<string, number>);
 
-    const categoryLabels: Record<string, { label: string; icon: string }> = {
-        food: { label: 'Food', icon: '🍔' }, transport: { label: 'Transport', icon: '🚗' },
-        shopping: { label: 'Shopping', icon: '🛒' }, utilities: { label: 'Utilities', icon: '💡' },
-        rent: { label: 'Rent', icon: '🏠' }, salary: { label: 'Salary', icon: '💼' },
-        other: { label: 'Other', icon: '📦' },
+    const categoryLabels: Record<string, { label: string; icon: string; color: string }> = {
+        food: { label: 'Food', icon: '🍔', color: '#FF6384' },
+        transport: { label: 'Transport', icon: '🚗', color: '#36A2EB' },
+        shopping: { label: 'Shopping', icon: '🛒', color: '#FFCE56' },
+        utilities: { label: 'Utilities', icon: '💡', color: '#4BC0C0' },
+        rent: { label: 'Rent', icon: '🏠', color: '#9966FF' },
+        salary: { label: 'Salary', icon: '💼', color: '#FF9F40' },
+        other: { label: 'Other', icon: '📦', color: '#C9CBCF' },
     };
 
     const maxExpense = Math.max(...Object.values(expensesByCategory), 1);
 
+    // Prepare pie chart data
+    const pieChartData = Object.entries(expensesByCategory).map(([category, amount]) => {
+        const catInfo = categoryLabels[category] || categoryLabels.other;
+        return {
+            name: catInfo.label,
+            amount: amount,
+            color: catInfo.color,
+            legendFontColor: colors.text.primary,
+            legendFontSize: 12,
+        };
+    });
+
+    // Prepare sales trend data (last 7 days)
+    const getLast7DaysSales = () => {
+        const labels: string[] = [];
+        const data: number[] = [];
+        const now = new Date();
+
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(now);
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+            const dayLabel = date.toLocaleDateString('en-IN', { weekday: 'short' });
+            labels.push(dayLabel);
+
+            const daySales = sales
+                .filter(s => s.date === dateStr)
+                .reduce((sum, s) => sum + getSaleAmount(s), 0);
+            data.push(daySales);
+        }
+        return { labels, data };
+    };
+
+    const salesTrendData = getLast7DaysSales();
+
+    const chartConfig = {
+        backgroundGradientFrom: colors.semantic.surface,
+        backgroundGradientTo: colors.semantic.surface,
+        color: (opacity = 1) => `rgba(129, 178, 154, ${opacity})`,
+        strokeWidth: 2,
+        barPercentage: 0.5,
+        useShadowColorFromDataset: false,
+        decimalPlaces: 0,
+        labelColor: () => colors.text.secondary,
+        propsForBackgroundLines: { strokeDasharray: '', stroke: colors.border.default },
+    };
+
+    const handleExportPDF = async () => {
+        setIsExporting(true);
+        try {
+            const { start, end } = getDateRange();
+            await pdfService.shareReport({
+                sales: filteredSales,
+                expenses: filteredExpenses,
+                credits: credits.filter(c => !start || (c.date >= start && c.date <= end)),
+                startDate: start || 'All Time',
+                endDate: end,
+                currency,
+            });
+        } catch (error) {
+            console.error('PDF Export Error:', error);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>Reports</Text>
-                    <Text style={styles.subtitle}>Financial Overview</Text>
+                <View style={styles.headerRow}>
+                    <View>
+                        <Text style={styles.title}>Reports</Text>
+                        <Text style={styles.subtitle}>Financial Overview</Text>
+                    </View>
+                    <TouchableOpacity
+                        style={[styles.exportBtn, isExporting && styles.exportBtnDisabled]}
+                        onPress={handleExportPDF}
+                        disabled={isExporting}
+                    >
+                        <FileText size={18} color={colors.text.inverse} strokeWidth={2} />
+                        <Text style={styles.exportBtnText}>{isExporting ? 'Exporting...' : 'Export PDF'}</Text>
+                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.rangeSelector}>
@@ -120,30 +203,47 @@ export const ReportsScreen: React.FC = () => {
                 </Card>
 
                 <Text style={styles.sectionTitle}>Expense Breakdown</Text>
-                <Card style={styles.chartCard}>
-                    {Object.entries(expensesByCategory).length === 0 ? (
+                {pieChartData.length > 0 ? (
+                    <Card style={styles.chartCard}>
+                        <PieChart
+                            data={pieChartData}
+                            width={SCREEN_WIDTH - tokens.spacing.md * 2 - 32}
+                            height={180}
+                            chartConfig={chartConfig}
+                            accessor="amount"
+                            backgroundColor="transparent"
+                            paddingLeft="15"
+                            absolute
+                        />
+                    </Card>
+                ) : (
+                    <Card style={styles.chartCard}>
                         <View style={styles.emptyChart}>
                             <Text style={styles.emptyIcon}>📊</Text>
                             <Text style={styles.emptyText}>No expenses in this period</Text>
                         </View>
+                    </Card>
+                )}
+
+                <Text style={styles.sectionTitle}>Sales Trend (Last 7 Days)</Text>
+                <Card style={styles.chartCard}>
+                    {salesTrendData.data.some(d => d > 0) ? (
+                        <LineChart
+                            data={{
+                                labels: salesTrendData.labels,
+                                datasets: [{ data: salesTrendData.data.map(d => d || 0) }],
+                            }}
+                            width={SCREEN_WIDTH - tokens.spacing.md * 2 - 32}
+                            height={200}
+                            chartConfig={chartConfig}
+                            bezier
+                            style={{ marginVertical: 8, borderRadius: 16 }}
+                            fromZero
+                        />
                     ) : (
-                        <View>
-                            {Object.entries(expensesByCategory).sort((a, b) => b[1] - a[1]).map(([category, amount]) => {
-                                const catInfo = categoryLabels[category] || categoryLabels.other;
-                                const percentage = ((amount / maxExpense) * 100);
-                                return (
-                                    <Animated.View key={category} style={styles.barRow}>
-                                        <View style={styles.barLabel}>
-                                            <Text style={styles.barIcon}>{catInfo.icon}</Text>
-                                            <Text style={styles.barText} numberOfLines={1}>{catInfo.label}</Text>
-                                        </View>
-                                        <View style={styles.barContainer}>
-                                            <Animated.View style={[styles.bar, { width: chartAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', `${percentage}%`] }) }]} />
-                                        </View>
-                                        <Text style={styles.barAmount}>{currency}{amount.toLocaleString()}</Text>
-                                    </Animated.View>
-                                );
-                            })}
+                        <View style={styles.emptyChart}>
+                            <Text style={styles.emptyIcon}>📈</Text>
+                            <Text style={styles.emptyText}>No sales data yet</Text>
                         </View>
                     )}
                 </Card>
@@ -177,9 +277,13 @@ export const ReportsScreen: React.FC = () => {
 const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.semantic.background },
     content: { flex: 1, paddingHorizontal: tokens.spacing.md },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingTop: tokens.spacing.md, paddingBottom: tokens.spacing.md },
     header: { paddingTop: tokens.spacing.md, paddingBottom: tokens.spacing.md },
     title: { fontSize: tokens.typography.sizes.xxl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     subtitle: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular },
+    exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.brand.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: tokens.radius.md },
+    exportBtnDisabled: { opacity: 0.6 },
+    exportBtnText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.sm, fontFamily: tokens.typography.fontFamily.medium },
     rangeSelector: { flexDirection: 'row', backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.pill, padding: tokens.spacing.xxs, marginBottom: tokens.spacing.md },
     rangeTab: { flex: 1, paddingVertical: tokens.spacing.xs, alignItems: 'center', borderRadius: tokens.radius.pill },
     rangeTabActive: { backgroundColor: colors.brand.secondary },
