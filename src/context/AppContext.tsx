@@ -39,6 +39,8 @@ interface AppContextType extends AppState {
     restoreData: (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) => Promise<boolean>;
     // Computed
     getTodaySales: () => number;
+    getTodayCashReceived: () => number;
+    getTodayUPIReceived: () => number;
     getTodayExpenses: () => number;
     getBalance: () => number;
     // Credit Payments
@@ -264,11 +266,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return success;
     }, []);
 
-    // Computed values - use paidAmount for actual cash received (with legacy fallback)
+    // Computed values
+    // Get today's total sales amount (totalAmount - full invoice value)
     const getTodaySales = useCallback(() => {
         const today = getToday();
         return state.sales
             .filter((s) => s.date === today)
+            .reduce((sum, s) => sum + (s.totalAmount ?? 0), 0);
+    }, [state.sales]);
+
+    // Get today's cash received (paidAmount for Cash payment method)
+    const getTodayCashReceived = useCallback(() => {
+        const today = getToday();
+        return state.sales
+            .filter((s) => s.date === today && s.paymentMethod === 'Cash')
+            .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
+    }, [state.sales]);
+
+    // Get today's UPI received (paidAmount for UPI payment method)
+    const getTodayUPIReceived = useCallback(() => {
+        const today = getToday();
+        return state.sales
+            .filter((s) => s.date === today && s.paymentMethod === 'UPI')
             .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
     }, [state.sales]);
 
@@ -302,6 +321,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 clearAllData,
                 restoreData,
                 getTodaySales,
+                getTodayCashReceived,
+                getTodayUPIReceived,
                 getTodayExpenses,
                 getBalance,
                 addCreditPayment,

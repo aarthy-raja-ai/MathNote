@@ -86,7 +86,7 @@ const actionStyles = StyleSheet.create({
 });
 
 export const DashboardScreen: React.FC = () => {
-    const { getTodaySales, getTodayExpenses, getBalance, settings, isLoading } = useApp();
+    const { getTodaySales, getTodayCashReceived, getTodayUPIReceived, getTodayExpenses, getBalance, settings, isLoading } = useApp();
     const { colors, isDark } = useTheme();
     const navigation = useNavigation<any>();
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -113,6 +113,8 @@ export const DashboardScreen: React.FC = () => {
     }
 
     const todaySales = getTodaySales();
+    const todayCashReceived = getTodayCashReceived();
+    const todayUPIReceived = getTodayUPIReceived();
     const todayExpenses = getTodayExpenses();
     const balance = getBalance();
     const currency = settings.currency;
@@ -138,7 +140,7 @@ export const DashboardScreen: React.FC = () => {
     return (
         <SafeAreaView style={styles.container}>
             <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                     {/* Header */}
                     <View style={styles.header}>
                         <Text style={styles.greeting}>Welcome back! 👋</Text>
@@ -161,6 +163,22 @@ export const DashboardScreen: React.FC = () => {
                         <Text style={styles.cardAmountRed}>
                             {currency} {todayExpenses.toLocaleString()}
                         </Text>
+                    </View>
+
+                    {/* Separate Cash and UPI Received Cards */}
+                    <View style={styles.receivedRow}>
+                        <View style={[styles.receivedCard, styles.cashCard]}>
+                            <Text style={styles.cardLabel}>Cash Received</Text>
+                            <Text style={styles.cardAmountBlue}>
+                                {currency} {todayCashReceived.toLocaleString()}
+                            </Text>
+                        </View>
+                        <View style={[styles.receivedCard, styles.upiCard]}>
+                            <Text style={styles.cardLabel}>UPI Received</Text>
+                            <Text style={styles.cardAmountPurple}>
+                                {currency} {todayUPIReceived.toLocaleString()}
+                            </Text>
+                        </View>
                     </View>
 
                     <View style={styles.balanceCard}>
@@ -199,6 +217,9 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: tokens.spacing.md,
+    },
+    scrollContent: {
+        paddingBottom: 100, // Prevent overlap with nav bar
     },
     loadingContainer: {
         flex: 1,
@@ -245,6 +266,26 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         marginBottom: 14,
         ...tokens.shadow.card,
     },
+    receivedRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 14,
+    },
+    receivedCard: {
+        flex: 1,
+        backgroundColor: colors.semantic.surface,
+        borderRadius: tokens.radius.lg,
+        padding: tokens.spacing.md,
+        ...tokens.shadow.card,
+    },
+    cashCard: {
+        borderLeftWidth: 3,
+        borderLeftColor: '#2196F3',
+    },
+    upiCard: {
+        borderLeftWidth: 3,
+        borderLeftColor: '#9C27B0',
+    },
     cardLabel: {
         fontSize: tokens.typography.sizes.sm,
         color: colors.text.secondary,
@@ -259,6 +300,16 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     cardAmountRed: {
         fontSize: tokens.typography.sizes.xl,
         color: colors.brand.primary,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    cardAmountBlue: {
+        fontSize: tokens.typography.sizes.lg,
+        color: '#2196F3',
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    cardAmountPurple: {
+        fontSize: tokens.typography.sizes.lg,
+        color: '#9C27B0',
         fontFamily: tokens.typography.fontFamily.bold,
     },
     balanceCard: {

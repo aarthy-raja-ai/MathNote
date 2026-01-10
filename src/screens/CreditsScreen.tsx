@@ -402,7 +402,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     emptySubtext: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, marginTop: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.regular },
     listContent: { paddingBottom: 160 },
-    floatingButton: { position: 'absolute', bottom: 96, alignSelf: 'center', backgroundColor: colors.brand.primary, height: 56, minWidth: 220, borderRadius: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: tokens.spacing.lg, ...tokens.shadow.floatingButton },
+    floatingButton: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: colors.brand.primary, height: 52, minWidth: 200, borderRadius: 26, justifyContent: 'center', alignItems: 'center', paddingHorizontal: tokens.spacing.lg, ...tokens.shadow.floatingButton },
     floatingButtonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
     floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.semibold },
     modalOverlay: { flex: 1, justifyContent: 'flex-end' },

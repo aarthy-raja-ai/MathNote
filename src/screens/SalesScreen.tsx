@@ -205,61 +205,38 @@ export const SalesScreen: React.FC = () => {
         const isPartial = paid < total && total > 0;
         const remaining = total - paid;
 
-        return (
-            <Card style={styles.saleCard}>
-                <View style={styles.saleRow}>
-                    {/* Left section - takes remaining space */}
-                    <View style={styles.leftSection}>
-                        {item.customerName ? (
-                            <Text style={styles.customerName} numberOfLines={1} ellipsizeMode="tail">
-                                {item.customerName}
-                            </Text>
-                        ) : (
-                            <Text style={styles.customerName} numberOfLines={1}>Walk-in</Text>
-                        )}
+        // Build subtitle parts
+        const subtitleParts: string[] = [];
+        if (item.paymentMethod) subtitleParts.push(item.paymentMethod);
+        if (isPartial) subtitleParts.push(`Due: ${currency}${remaining}`);
+        if (item.note) subtitleParts.push(item.note);
 
-                        <Text style={styles.saleAmount} numberOfLines={1}>
+        return (
+            <Pressable
+                style={styles.listItem}
+                onPress={() => handleEdit(item)}
+                onLongPress={() => handleDelete(item.id)}
+            >
+                {/* Row 1: Customer name + Amount */}
+                <View style={styles.listRow}>
+                    <Text style={styles.listName} numberOfLines={1} ellipsizeMode="tail">
+                        {item.customerName || 'Walk-in'}
+                    </Text>
+                    <View style={styles.amountRow}>
+                        {isPartial && <View style={styles.partialDot} />}
+                        <Text style={styles.listAmount}>
                             {currency} {total.toLocaleString()}
                         </Text>
-
-                        {/* Badges row */}
-                        <View style={styles.badgesRow}>
-                            {isPartial && (
-                                <View style={styles.partialBadge}>
-                                    <Text style={styles.partialText}>Partial</Text>
-                                </View>
-                            )}
-                            {item.paymentMethod && (
-                                <View style={styles.paymentBadge}>
-                                    <Text style={styles.paymentBadgeText}>{item.paymentMethod}</Text>
-                                </View>
-                            )}
-                        </View>
-
-                        {isPartial && (
-                            <Text style={styles.balanceText} numberOfLines={1}>
-                                Paid: {currency}{paid} | Due: {currency}{remaining}
-                            </Text>
-                        )}
-
-                        {item.note ? (
-                            <Text style={styles.saleNote} numberOfLines={1} ellipsizeMode="tail">
-                                {item.note}
-                            </Text>
-                        ) : null}
-                    </View>
-
-                    {/* Right section - fixed width for icons */}
-                    <View style={styles.rightSection}>
-                        <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                            <Pencil size={18} color={colors.text.muted} strokeWidth={2} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
-                            <Trash2 size={18} color={colors.brand.primary} strokeWidth={2} />
-                        </TouchableOpacity>
                     </View>
                 </View>
-            </Card>
+
+                {/* Row 2: Payment method, due amount, note */}
+                {subtitleParts.length > 0 && (
+                    <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                        {subtitleParts.join(' • ')}
+                    </Text>
+                )}
+            </Pressable>
         );
     };
 
@@ -365,39 +342,56 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     totalCard: { backgroundColor: colors.semantic.success, marginBottom: tokens.spacing.md },
     totalLabel: { fontSize: tokens.typography.sizes.sm, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.regular },
     totalAmount: { fontSize: tokens.typography.sizes.xxl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
-    listContent: { paddingBottom: 160 },
+    listContent: { paddingBottom: 180 },
 
-    // Sale Card - Compact layout
-    saleCard: { marginBottom: tokens.spacing.xs, backgroundColor: colors.semantic.surface, padding: 12 },
-    saleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-
-    // Left section - flex to take remaining space
-    leftSection: { flex: 1, minWidth: 0, gap: 2 },
-
-    // Right section - fixed width for icons
-    rightSection: { width: 64, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
-
-    customerName: { fontSize: 15, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.semibold, maxWidth: '100%' },
-    saleAmount: { fontSize: 16, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
-
-    // Badges row with wrap
-    badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
-    partialBadge: { height: 20, paddingHorizontal: 8, borderRadius: 10, backgroundColor: colors.brand.primary, alignItems: 'center', justifyContent: 'center' },
-    partialText: { fontSize: 10, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.medium },
-    paymentBadge: { height: 20, paddingHorizontal: 8, borderRadius: 10, backgroundColor: colors.semantic.soft, alignItems: 'center', justifyContent: 'center' },
-    paymentBadgeText: { fontSize: 10, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.medium },
-
-    balanceText: { fontSize: 12, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
-    saleNote: { fontSize: 12, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular },
-
-    actionBtn: { padding: 6 },
+    // Compact List Item
+    listItem: {
+        paddingVertical: 10,
+        paddingHorizontal: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border.default,
+    },
+    listRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    listName: {
+        flex: 1,
+        fontSize: 14,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginRight: 8,
+    },
+    amountRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    partialDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: colors.brand.primary,
+    },
+    listAmount: {
+        fontSize: 14,
+        color: colors.brand.secondary,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    listSubtitle: {
+        fontSize: 12,
+        color: colors.text.muted,
+        fontFamily: tokens.typography.fontFamily.regular,
+        marginTop: 2,
+    },
 
     emptyContainer: { alignItems: 'center', paddingVertical: tokens.spacing.xxl },
     emptyIcon: { fontSize: 48, marginBottom: tokens.spacing.md },
     emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     emptySubtext: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, marginTop: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.regular },
 
-    floatingButton: { position: 'absolute', bottom: 96, alignSelf: 'center', backgroundColor: colors.brand.primary, height: 56, minWidth: 220, borderRadius: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: tokens.spacing.lg, ...tokens.shadow.floatingButton },
+    floatingButton: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: colors.brand.primary, height: 52, minWidth: 200, borderRadius: 26, justifyContent: 'center', alignItems: 'center', paddingHorizontal: tokens.spacing.lg, ...tokens.shadow.floatingButton },
     floatingButtonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
     floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.semibold },
 
