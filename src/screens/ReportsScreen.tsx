@@ -64,11 +64,28 @@ export const ReportsScreen: React.FC = () => {
 
     const filteredSales = filterByRange(sales);
     const filteredExpenses = filterByRange(expenses);
+    const filteredCredits = filterByRange(credits);
 
     const totalSales = filteredSales.reduce((sum, s) => sum + getSaleAmount(s), 0);
     const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const netProfit = totalSales - totalExpenses;
-    const profitMargin = totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0';
+
+    // Credit payments received (from given credits - money coming in)
+    const creditReceived = filteredCredits
+        .filter((c) => c.type === 'given')
+        .reduce((sum, c) => sum + (c.paidAmount || 0), 0);
+
+    // Credit payments made (for taken credits - money going out)
+    const creditPaid = filteredCredits
+        .filter((c) => c.type === 'taken')
+        .reduce((sum, c) => sum + (c.paidAmount || 0), 0);
+
+    // Total income = sales + credit received
+    const totalIncome = totalSales + creditReceived;
+    // Total outflow = expenses + credit paid
+    const totalOutflow = totalExpenses + creditPaid;
+
+    const netProfit = totalIncome - totalOutflow;
+    const profitMargin = totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : '0';
 
     const expensesByCategory = filteredExpenses.reduce((acc, e) => {
         acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
@@ -190,6 +207,19 @@ export const ReportsScreen: React.FC = () => {
                     </Card>
                 </View>
 
+                {(creditReceived > 0 || creditPaid > 0) && (
+                    <View style={styles.summaryRow}>
+                        <Card style={styles.creditReceivedCard}>
+                            <Text style={styles.summaryLabel}>Credit Received</Text>
+                            <Text style={styles.creditReceivedAmount}>{currency} {creditReceived.toLocaleString()}</Text>
+                        </Card>
+                        <Card style={styles.creditPaidCard}>
+                            <Text style={styles.summaryLabelLight}>Credit Paid</Text>
+                            <Text style={styles.creditPaidAmount}>{currency} {creditPaid.toLocaleString()}</Text>
+                        </Card>
+                    </View>
+                )}
+
                 <Card style={[styles.profitCard, netProfit >= 0 ? styles.profitPositive : styles.profitNegative]}>
                     <View style={styles.profitRow}>
                         <View>
@@ -296,6 +326,10 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     summaryLabelLight: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, marginBottom: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
     salesAmount: { fontSize: tokens.typography.sizes.xl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     expensesAmount: { fontSize: tokens.typography.sizes.xl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
+    creditReceivedCard: { flex: 1, backgroundColor: 'rgba(129, 178, 154, 0.8)' },
+    creditPaidCard: { flex: 1, backgroundColor: 'rgba(236, 11, 67, 0.8)' },
+    creditReceivedAmount: { fontSize: tokens.typography.sizes.xl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
+    creditPaidAmount: { fontSize: tokens.typography.sizes.xl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
     profitCard: { marginBottom: tokens.spacing.md },
     profitPositive: { backgroundColor: colors.brand.secondary },
     profitNegative: { backgroundColor: colors.brand.primary },

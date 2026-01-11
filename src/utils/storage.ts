@@ -139,6 +139,7 @@ export interface CreditPayment {
     amount: number;
     date: string;
     note?: string;
+    paymentMode: 'Cash' | 'UPI';
 }
 
 export interface Credit {
@@ -151,6 +152,7 @@ export interface Credit {
     date: string;
     linkedSaleId?: string;
     payments?: CreditPayment[]; // History of partial payments
+    paymentMode?: 'Cash' | 'UPI';  // Default payment mode for the credit
 }
 
 export interface Settings {

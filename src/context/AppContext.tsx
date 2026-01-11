@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import storage, { Sale, Expense, Credit, Settings } from '../utils/storage';
+import storage, { Sale, Expense, Credit, Settings, CreditPayment } from '../utils/storage';
 
 interface AppState {
     sales: Sale[];
@@ -43,6 +43,9 @@ interface AppContextType extends AppState {
     getTodayUPIReceived: () => number;
     getTodayExpenses: () => number;
     getBalance: () => number;
+    // Credit computed
+    getCreditPaymentsReceived: () => number;  // Money received from given credits
+    getCreditPaymentsMade: () => number;       // Money paid for taken credits
     // Credit Payments
     addCreditPayment: (creditId: string, payment: Omit<CreditPayment, 'id'>) => Promise<void>;
 }
@@ -298,11 +301,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             .reduce((sum, e) => sum + (e.amount ?? 0), 0);
     }, [state.expenses]);
 
+    // Get total payments received for 'given' credits (money coming in from credits we gave)
+    const getCreditPaymentsReceived = useCallback(() => {
+        return state.credits
+            .filter((c) => c.type === 'given')
+            .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
+    }, [state.credits]);
+
+    // Get total payments made for 'taken' credits (money going out for credits we took)
+    const getCreditPaymentsMade = useCallback(() => {
+        return state.credits
+            .filter((c) => c.type === 'taken')
+            .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
+    }, [state.credits]);
+
     const getBalance = useCallback(() => {
         const totalSales = state.sales.reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
         const totalExpenses = state.expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
-        return totalSales - totalExpenses;
-    }, [state.sales, state.expenses]);
+        // Credit payments received (from given credits) add to balance
+        const creditReceived = state.credits
+            .filter((c) => c.type === 'given')
+            .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
+        // Credit payments made (for taken credits) subtract from balance
+        const creditPaid = state.credits
+            .filter((c) => c.type === 'taken')
+            .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
+        return totalSales + creditReceived - totalExpenses - creditPaid;
+    }, [state.sales, state.expenses, state.credits]);
 
     return (
         <AppContext.Provider
@@ -325,6 +350,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 getTodayUPIReceived,
                 getTodayExpenses,
                 getBalance,
+                getCreditPaymentsReceived,
+                getCreditPaymentsMade,
                 addCreditPayment,
             }}
         >

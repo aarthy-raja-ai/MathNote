@@ -13,7 +13,7 @@ import {
     Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
@@ -33,6 +33,8 @@ export const CreditsScreen: React.FC = () => {
     const [type, setType] = useState<'given' | 'taken'>('given');
     const [filter, setFilter] = useState<'all' | 'given' | 'taken'>('all');
     const [dateFilter, setDateFilter] = useState<string>(''); // YYYY-MM-DD
+    const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
+    const [paymentPaymentMode, setPaymentPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const today = new Date().toISOString().split('T')[0];
@@ -52,6 +54,7 @@ export const CreditsScreen: React.FC = () => {
         setAmount('');
         setParty('');
         setType('given');
+        setPaymentMode('Cash');
         setModalVisible(true);
     };
 
@@ -64,6 +67,7 @@ export const CreditsScreen: React.FC = () => {
         setAmount(credit.amount.toString());
         setParty(credit.party);
         setType(credit.type);
+        setPaymentMode(credit.paymentMode || 'Cash');
         setModalVisible(true);
     };
 
@@ -86,6 +90,7 @@ export const CreditsScreen: React.FC = () => {
     const handleRecordPayment = (credit: Credit) => {
         setSelectedCredit(credit);
         setPaymentAmount('');
+        setPaymentPaymentMode('Cash');
         setPaymentModalVisible(true);
     };
 
@@ -104,6 +109,7 @@ export const CreditsScreen: React.FC = () => {
             await addCreditPayment(selectedCredit.id, {
                 amount: parsedAmount,
                 date: today,
+                paymentMode: paymentPaymentMode,
             });
             setPaymentModalVisible(false);
             setSelectedCredit(null);
@@ -122,9 +128,9 @@ export const CreditsScreen: React.FC = () => {
         }
 
         if (editingCredit) {
-            await updateCredit(editingCredit.id, { amount: parsedAmount, party, type });
+            await updateCredit(editingCredit.id, { amount: parsedAmount, party, type, paymentMode });
         } else {
-            await addCredit({ date: today, amount: parsedAmount, party, type, status: 'pending' });
+            await addCredit({ date: today, amount: parsedAmount, party, type, status: 'pending', paymentMode });
         }
         setModalVisible(false);
     };
@@ -159,14 +165,25 @@ export const CreditsScreen: React.FC = () => {
                     </View>
                     <View style={styles.creditInfo}>
                         <View style={styles.partyRow}>
-                            <Text style={styles.partyName}>{item.party}</Text>
+                            <Text style={styles.partyTypeLabel}>{item.type === 'given' ? 'Customer' : 'Vendor'}</Text>
                             {linkedSale && (
                                 <View style={styles.linkedBadge}>
                                     <Link size={10} color={colors.brand.secondary} strokeWidth={2} />
                                     <Text style={styles.linkedText}>Sale</Text>
                                 </View>
                             )}
+                            {item.paymentMode && (
+                                <View style={[styles.paymentModeBadge, item.paymentMode === 'UPI' && styles.upiBadge]}>
+                                    {item.paymentMode === 'Cash' ? (
+                                        <Banknote size={10} color={colors.semantic.success} />
+                                    ) : (
+                                        <Smartphone size={10} color={colors.brand.secondary} />
+                                    )}
+                                    <Text style={[styles.paymentModeText, item.paymentMode === 'UPI' && styles.upiText]}>{item.paymentMode}</Text>
+                                </View>
+                            )}
                         </View>
+                        <Text style={styles.partyName}>{item.party}</Text>
                         <Text style={[styles.creditAmount, item.type === 'given' ? styles.givenAmount : styles.takenAmount]}>
                             {currency} {item.amount.toLocaleString()}
                         </Text>
@@ -278,8 +295,19 @@ export const CreditsScreen: React.FC = () => {
                                     <Text style={[styles.typeLabel, type === 'taken' && styles.typeLabelSelected]}>Taken</Text>
                                 </Pressable>
                             </View>
-                            <Input label="Party Name" placeholder="Enter name" value={party} onChangeText={setParty} />
+                            <Input label={type === 'given' ? 'Customer Name' : 'Vendor Name'} placeholder="Enter name" value={party} onChangeText={setParty} />
                             <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
+                            <Text style={styles.paymentModeLabel}>Payment Mode</Text>
+                            <View style={styles.paymentModeRow}>
+                                <Pressable style={[styles.paymentModeOption, paymentMode === 'Cash' && styles.paymentModeSelected]} onPress={() => setPaymentMode('Cash')}>
+                                    <Banknote size={18} color={paymentMode === 'Cash' ? colors.text.inverse : colors.text.secondary} />
+                                    <Text style={[styles.paymentModeOptionText, paymentMode === 'Cash' && styles.paymentModeOptionTextSelected]}>Cash</Text>
+                                </Pressable>
+                                <Pressable style={[styles.paymentModeOption, paymentMode === 'UPI' && styles.paymentModeSelected]} onPress={() => setPaymentMode('UPI')}>
+                                    <Smartphone size={18} color={paymentMode === 'UPI' ? colors.text.inverse : colors.text.secondary} />
+                                    <Text style={[styles.paymentModeOptionText, paymentMode === 'UPI' && styles.paymentModeOptionTextSelected]}>UPI</Text>
+                                </Pressable>
+                            </View>
                             <View style={styles.modalButtons}>
                                 <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
                                     <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -301,6 +329,17 @@ export const CreditsScreen: React.FC = () => {
                             <Text style={styles.modalTitle}>Record Payment</Text>
                             <Text style={styles.partyNameCenter}>{selectedCredit?.party}</Text>
                             <Input label="Amount Paid" placeholder="Enter amount" keyboardType="numeric" value={paymentAmount} onChangeText={setPaymentAmount} />
+                            <Text style={styles.paymentModeLabel}>Payment Mode</Text>
+                            <View style={styles.paymentModeRow}>
+                                <Pressable style={[styles.paymentModeOption, paymentPaymentMode === 'Cash' && styles.paymentModeSelected]} onPress={() => setPaymentPaymentMode('Cash')}>
+                                    <Banknote size={18} color={paymentPaymentMode === 'Cash' ? colors.text.inverse : colors.text.secondary} />
+                                    <Text style={[styles.paymentModeOptionText, paymentPaymentMode === 'Cash' && styles.paymentModeOptionTextSelected]}>Cash</Text>
+                                </Pressable>
+                                <Pressable style={[styles.paymentModeOption, paymentPaymentMode === 'UPI' && styles.paymentModeSelected]} onPress={() => setPaymentPaymentMode('UPI')}>
+                                    <Smartphone size={18} color={paymentPaymentMode === 'UPI' ? colors.text.inverse : colors.text.secondary} />
+                                    <Text style={[styles.paymentModeOptionText, paymentPaymentMode === 'UPI' && styles.paymentModeOptionTextSelected]}>UPI</Text>
+                                </Pressable>
+                            </View>
                             <View style={styles.modalButtons}>
                                 <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setPaymentModalVisible(false)}>
                                     <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -330,7 +369,19 @@ export const CreditsScreen: React.FC = () => {
                                     <View style={styles.paymentItem}>
                                         <View>
                                             <Text style={styles.paymentAmount}>{currency}{item.amount.toLocaleString()}</Text>
-                                            <Text style={styles.paymentDate}>{new Date(item.date).toLocaleDateString('en-IN')}</Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                                <Text style={styles.paymentDate}>{new Date(item.date).toLocaleDateString('en-IN')}</Text>
+                                                {item.paymentMode && (
+                                                    <View style={[styles.paymentModeBadge, item.paymentMode === 'UPI' && styles.upiBadge]}>
+                                                        {item.paymentMode === 'Cash' ? (
+                                                            <Banknote size={10} color={colors.semantic.success} />
+                                                        ) : (
+                                                            <Smartphone size={10} color={colors.brand.secondary} />
+                                                        )}
+                                                        <Text style={[styles.paymentModeText, item.paymentMode === 'UPI' && styles.upiText]}>{item.paymentMode}</Text>
+                                                    </View>
+                                                )}
+                                            </View>
                                         </View>
                                         <CheckCircle size={18} color={colors.semantic.success} />
                                     </View>
@@ -431,6 +482,18 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     paymentDate: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
     emptyHistory: { alignItems: 'center', paddingVertical: 20 },
     emptyTextSmall: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
+    // Payment mode styles
+    partyTypeLabel: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.medium, textTransform: 'uppercase' as const },
+    paymentModeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(129, 178, 154, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+    upiBadge: { backgroundColor: 'rgba(44, 73, 107, 0.1)' },
+    paymentModeText: { fontSize: 10, color: colors.semantic.success, fontFamily: tokens.typography.fontFamily.medium },
+    upiText: { color: colors.brand.secondary },
+    paymentModeLabel: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, marginBottom: tokens.spacing.xs, marginTop: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.medium },
+    paymentModeRow: { flexDirection: 'row', gap: tokens.spacing.sm, marginBottom: tokens.spacing.sm },
+    paymentModeOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: tokens.spacing.sm, backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.md },
+    paymentModeSelected: { backgroundColor: colors.brand.primary },
+    paymentModeOptionText: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.medium },
+    paymentModeOptionTextSelected: { color: colors.text.inverse },
 });
 
 export default CreditsScreen;
