@@ -4,7 +4,7 @@
 
 A simple and elegant offline accounting app for small businesses, built with React Native & Expo.
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
@@ -13,7 +13,7 @@ A simple and elegant offline accounting app for small businesses, built with Rea
 ### 📊 Dashboard
 - Today's summary at a glance
 - Separate Cash & UPI received tracking
-- Total balance overview
+- Total balance overview with credit impact
 - Quick action buttons
 
 ### 💰 Sales Management
@@ -28,9 +28,11 @@ A simple and elegant offline accounting app for small businesses, built with Rea
 - Note attachments
 
 ### 🤝 Credit Management
-- Track money given/received
-- Partial payment recording
-- Payment history for each credit
+- Track money given (Customers) / taken (Vendors)
+- Payment mode selection (Cash/UPI) for credits
+- Partial payment recording with payment mode
+- Payment history with mode tracking for each credit
+- Credit payments impact total balance calculations
 - Due reminders
 
 ### 📈 Reports
@@ -112,13 +114,31 @@ MathNote/
 └── package.json
 ```
 
-## 📝 Recent Updates (v1.3.0)
+## 📝 Recent Updates (v1.4.0)
 
-- ✅ Separated Cash & UPI received amounts on dashboard
-- ✅ Compact list design for transaction history
-- ✅ Fixed nav bar overlap with action buttons
-- ✅ Improved gesture controls (tap to edit, long-press to delete)
-- ✅ Added bottom padding to prevent content overlap
+### 🤝 Enhanced Credits System
+- ✅ Added payment mode (Cash/UPI) selection for credits
+- ✅ Distinguish between Customers (given credits) and Vendors (taken credits)
+- ✅ Payment mode tracking in payment history
+- ✅ Record payment modal now includes payment mode selection
+- ✅ Visual badges showing payment mode (Cash/UPI) on credit cards
+
+### 💰 Improved Balance Calculation
+- ✅ Credit payments received (from given credits) now add to total balance
+- ✅ Credit payments made (for taken credits) now subtract from total balance
+- ✅ Accurate financial overview reflecting all money movements
+
+### 🎨 UI Enhancements
+- ✅ Party type label (Customer/Vendor) displayed on credit cards
+- ✅ Payment mode badges with icons (Banknote for Cash, Smartphone for UPI)
+- ✅ Updated form labels based on credit type
+
+### Previous Updates (v1.3.0)
+- Separated Cash & UPI received amounts on dashboard
+- Compact list design for transaction history
+- Fixed nav bar overlap with action buttons
+- Improved gesture controls (tap to edit, long-press to delete)
+- Added bottom padding to prevent content overlap
 
 ## 🤝 Contributing
 
