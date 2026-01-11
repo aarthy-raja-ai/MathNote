@@ -11,10 +11,12 @@ import {
     Pressable,
     KeyboardAvoidingView,
     Platform,
+    TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone } from 'lucide-react-native';
-import { Card, Input } from '../components';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
+import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Credit, CreditPayment } from '../utils/storage';
@@ -25,14 +27,16 @@ export const CreditsScreen: React.FC = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
     const [historyModalVisible, setHistoryModalVisible] = useState(false);
+    const [datePickerVisible, setDatePickerVisible] = useState(false);
     const [selectedCredit, setSelectedCredit] = useState<Credit | null>(null);
     const [editingCredit, setEditingCredit] = useState<Credit | null>(null);
     const [amount, setAmount] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [party, setParty] = useState('');
     const [type, setType] = useState<'given' | 'taken'>('given');
-    const [filter, setFilter] = useState<'all' | 'given' | 'taken'>('all');
-    const [dateFilter, setDateFilter] = useState<string>(''); // YYYY-MM-DD
+    const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [dateInputValue, setDateInputValue] = useState('');
     const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const [paymentPaymentMode, setPaymentPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -135,14 +139,40 @@ export const CreditsScreen: React.FC = () => {
         setModalVisible(false);
     };
 
-    const filteredCredits = credits.filter((c) => {
-        const matchesType = filter === 'all' || c.type === filter;
-        const matchesDate = !dateFilter || c.date === dateFilter;
-        return matchesType && matchesDate;
-    });
+    // Date filter handlers
+    const handleDateFilterChange = (filter: DateFilterType) => {
+        setDateFilter(filter);
+        setSelectedDate(null);
+    };
 
-    const pendingGiven = credits.filter((c) => c.type === 'given' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
-    const pendingTaken = credits.filter((c) => c.type === 'taken' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
+    const handleCalendarPress = () => {
+        setDateInputValue(selectedDate || today);
+        setDatePickerVisible(true);
+    };
+
+    const handleDateSelect = () => {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (dateRegex.test(dateInputValue)) {
+            setSelectedDate(dateInputValue);
+            setDatePickerVisible(false);
+        } else {
+            Alert.alert('Invalid Date', 'Please enter date in YYYY-MM-DD format');
+        }
+    };
+
+    const clearSelectedDate = () => {
+        setSelectedDate(null);
+        setDatePickerVisible(false);
+    };
+
+    // Filter credits by date range (no type filter since tabs are removed)
+    const dateFilteredCredits = filterByDateRange(credits, dateFilter, selectedDate);
+    const filteredCredits = dateFilteredCredits
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Calculate pending amounts from filtered credits
+    const pendingGiven = filteredCredits.filter((c) => c.type === 'given' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
+    const pendingTaken = filteredCredits.filter((c) => c.type === 'taken' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
 
     // Get linked sale for a credit
     const getLinkedSale = (credit: Credit) => {
@@ -152,64 +182,47 @@ export const CreditsScreen: React.FC = () => {
 
     const renderCreditItem = ({ item }: { item: Credit }) => {
         const linkedSale = getLinkedSale(item);
+        const isToday = item.date === today;
+        const dueAmount = item.amount - (item.paidAmount || 0);
+
+        // Build subtitle parts
+        const subtitleParts: string[] = [];
+        subtitleParts.push(item.type === 'given' ? 'Customer' : 'Vendor');
+        if (item.paymentMode) subtitleParts.push(item.paymentMode);
+        subtitleParts.push(`Due: ${currency}${dueAmount.toLocaleString()}`);
+        if (!isToday) subtitleParts.push(new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
 
         return (
-            <Card style={[styles.creditCard, item.status === 'paid' && styles.paidCard]}>
-                <View style={styles.creditRow}>
+            <Pressable
+                style={[styles.listItem, item.status === 'paid' && styles.paidItem]}
+                onPress={() => handleEdit(item)}
+                onLongPress={() => handleDelete(item)}
+            >
+                {/* Row 1: Party name + Amount */}
+                <View style={styles.listRow}>
                     <View style={[styles.typeIcon, item.type === 'given' ? styles.givenIcon : styles.takenIcon]}>
                         {item.type === 'given' ? (
-                            <ArrowUpRight size={20} color={colors.semantic.success} strokeWidth={2.5} />
+                            <ArrowUpRight size={18} color={colors.semantic.success} strokeWidth={2.5} />
                         ) : (
-                            <ArrowDownLeft size={20} color={colors.brand.primary} strokeWidth={2.5} />
+                            <ArrowDownLeft size={18} color={colors.brand.primary} strokeWidth={2.5} />
                         )}
                     </View>
-                    <View style={styles.creditInfo}>
-                        <View style={styles.partyRow}>
-                            <Text style={styles.partyTypeLabel}>{item.type === 'given' ? 'Customer' : 'Vendor'}</Text>
-                            {linkedSale && (
-                                <View style={styles.linkedBadge}>
-                                    <Link size={10} color={colors.brand.secondary} strokeWidth={2} />
-                                    <Text style={styles.linkedText}>Sale</Text>
-                                </View>
-                            )}
-                            {item.paymentMode && (
-                                <View style={[styles.paymentModeBadge, item.paymentMode === 'UPI' && styles.upiBadge]}>
-                                    {item.paymentMode === 'Cash' ? (
-                                        <Banknote size={10} color={colors.semantic.success} />
-                                    ) : (
-                                        <Smartphone size={10} color={colors.brand.secondary} />
-                                    )}
-                                    <Text style={[styles.paymentModeText, item.paymentMode === 'UPI' && styles.upiText]}>{item.paymentMode}</Text>
-                                </View>
-                            )}
-                        </View>
-                        <Text style={styles.partyName}>{item.party}</Text>
-                        <Text style={[styles.creditAmount, item.type === 'given' ? styles.givenAmount : styles.takenAmount]}>
+                    <Text style={styles.listName} numberOfLines={1} ellipsizeMode="tail">
+                        {item.party}
+                    </Text>
+                    <View style={styles.amountRow}>
+                        {linkedSale && <Link size={12} color={colors.brand.secondary} strokeWidth={2} />}
+                        <Text style={[styles.listAmount, item.type === 'given' ? styles.givenAmount : styles.takenAmount]}>
                             {currency} {item.amount.toLocaleString()}
                         </Text>
-                        <View style={styles.paymentStatusRow}>
-                            <Text style={styles.paidBadge}>Paid: {currency}{item.paidAmount?.toLocaleString() || 0}</Text>
-                            <Text style={styles.dueBadge}>Due: {currency}{(item.amount - (item.paidAmount || 0)).toLocaleString()}</Text>
-                        </View>
-                        <Text style={styles.creditDate}>{new Date(item.date).toLocaleDateString('en-IN')}</Text>
-                    </View>
-                    <View style={styles.creditActions}>
-                        <TouchableOpacity onPress={() => handleRecordPayment(item)} style={styles.actionBtn}>
-                            <PlusCircle size={20} color={colors.semantic.success} strokeWidth={2} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleViewHistory(item)} style={styles.actionBtn}>
-                            <History size={20} color={colors.brand.secondary} strokeWidth={2} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                            <Pencil size={18} color={colors.text.muted} strokeWidth={2} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
-                            <Trash2 size={18} color={colors.text.muted} strokeWidth={2} />
-                        </TouchableOpacity>
                     </View>
                 </View>
-            </Card>
 
+                {/* Row 2: Type, payment mode, due, date */}
+                <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                    {subtitleParts.join(' • ')}
+                </Text>
+            </Pressable>
         );
     };
 
@@ -223,37 +236,24 @@ export const CreditsScreen: React.FC = () => {
 
                 <View style={styles.summaryRow}>
                     <Card style={styles.givenCard}>
-                        <Text style={styles.summaryLabel}>To Receive</Text>
+                        <Text style={styles.summaryLabel}>{getFilterLabel(dateFilter, selectedDate)} To Receive</Text>
                         <Text style={styles.summaryAmount}>{currency} {pendingGiven.toLocaleString()}</Text>
                     </Card>
                     <Card style={styles.takenCard}>
-                        <Text style={styles.summaryLabelLight}>To Pay</Text>
+                        <Text style={styles.summaryLabelLight}>{getFilterLabel(dateFilter, selectedDate)} To Pay</Text>
                         <Text style={styles.summaryAmountLight}>{currency} {pendingTaken.toLocaleString()}</Text>
                     </Card>
                 </View>
 
-                <View style={styles.filterTabs}>
-                    <View style={styles.filterRow}>
-                        <View style={styles.tabsContainer}>
-                            {(['all', 'given', 'taken'] as const).map((f) => (
-                                <TouchableOpacity key={f} style={[styles.filterTab, filter === f && styles.filterActive]} onPress={() => setFilter(f)}>
-                                    <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                                        {f.charAt(0).toUpperCase() + f.slice(1)}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                        <TouchableOpacity
-                            style={[styles.dateFilterBtn, dateFilter && styles.dateFilterActive]}
-                            onPress={() => {
-                                if (dateFilter) setDateFilter('');
-                                else setDateFilter(today);
-                            }}
-                        >
-                            <Calendar size={18} color={dateFilter ? colors.text.inverse : colors.text.secondary} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                <DateFilter
+                    selected={dateFilter}
+                    onFilterChange={handleDateFilterChange}
+                    onCalendarPress={handleCalendarPress}
+                    selectedDate={selectedDate}
+                    colors={colors}
+                />
+
+
 
                 <FlatList
                     data={filteredCredits}
@@ -263,9 +263,11 @@ export const CreditsScreen: React.FC = () => {
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyIcon}>🤝</Text>
-                            <Text style={styles.emptyText}>No credits yet</Text>
-                            <Text style={styles.emptySubtext}>Add credits given or taken</Text>
+                            <Handshake size={48} color={colors.text.muted} strokeWidth={1.5} />
+                            <Text style={styles.emptyText}>No credits found</Text>
+                            <Text style={styles.emptySubtext}>
+                                {dateFilter === 'today' ? 'Add credits given or taken' : 'Try a different date range'}
+                            </Text>
                         </View>
                     }
                 />
@@ -274,6 +276,37 @@ export const CreditsScreen: React.FC = () => {
             <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
                 <Text style={styles.floatingButtonText}>+ Add Credit</Text>
             </Pressable>
+
+            {/* Date Picker Modal */}
+            <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
+                <View style={styles.datePickerOverlay}>
+                    <View style={styles.datePickerCard}>
+                        <Text style={styles.datePickerTitle}>Select Date</Text>
+                        <Text style={styles.datePickerHint}>Enter date in YYYY-MM-DD format</Text>
+                        <TextInput
+                            style={styles.datePickerInput}
+                            value={dateInputValue}
+                            onChangeText={setDateInputValue}
+                            placeholder="2024-01-15"
+                            placeholderTextColor={colors.text.muted}
+                            keyboardType="numbers-and-punctuation"
+                        />
+                        <View style={styles.datePickerButtons}>
+                            <Pressable style={styles.datePickerClearBtn} onPress={clearSelectedDate}>
+                                <Text style={styles.datePickerClearText}>Clear</Text>
+                            </Pressable>
+                            <View style={styles.datePickerActions}>
+                                <Pressable style={styles.datePickerCancelBtn} onPress={() => setDatePickerVisible(false)}>
+                                    <Text style={styles.datePickerCancelText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable style={styles.datePickerSelectBtn} onPress={handleDateSelect}>
+                                    <Text style={styles.datePickerSelectText}>Select</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             <Modal visible={modalVisible} animationType="slide" transparent={true}>
                 <KeyboardAvoidingView
@@ -419,7 +452,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     summaryAmountLight: { fontSize: tokens.typography.sizes.xl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
     filterTabs: { marginBottom: tokens.spacing.md },
     filterRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.sm },
-    tabsContainer: { flex: 1, flexDirection: 'row', backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.pill, padding: tokens.spacing.xxs },
+    tabsContainer: { flex: 1, flexDirection: 'row', backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.pill, padding: tokens.spacing.xxs, overflow: 'hidden' },
     filterTab: { flex: 1, paddingVertical: tokens.spacing.xs, alignItems: 'center', borderRadius: tokens.radius.pill },
     filterActive: { backgroundColor: colors.brand.primary },
     filterText: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.medium },
@@ -429,9 +462,44 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     creditCard: { marginBottom: tokens.spacing.sm, backgroundColor: colors.semantic.surface },
     paidCard: { opacity: 0.8 },
     creditRow: { flexDirection: 'row', alignItems: 'center' },
-    typeIcon: { width: 40, height: 40, borderRadius: tokens.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
+    typeIcon: { width: 36, height: 36, borderRadius: tokens.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
     givenIcon: { backgroundColor: 'rgba(129, 178, 154, 0.15)' },
     takenIcon: { backgroundColor: 'rgba(236, 11, 67, 0.15)' },
+    // Compact list item styles (matching Sales screen)
+    listItem: {
+        paddingVertical: 10,
+        paddingHorizontal: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border.default,
+    },
+    paidItem: { opacity: 0.6 },
+    listRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    listName: {
+        flex: 1,
+        fontSize: 14,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginRight: 8,
+    },
+    amountRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    listAmount: {
+        fontSize: 14,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    listSubtitle: {
+        fontSize: 12,
+        color: colors.text.muted,
+        fontFamily: tokens.typography.fontFamily.regular,
+        marginTop: 2,
+        marginLeft: 48, // Align with text after icon
+    },
     creditInfo: { flex: 1 },
     partyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     partyName: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
@@ -494,6 +562,20 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     paymentModeSelected: { backgroundColor: colors.brand.primary },
     paymentModeOptionText: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.medium },
     paymentModeOptionTextSelected: { color: colors.text.inverse },
+    // Date Picker Modal Styles
+    datePickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+    datePickerCard: { backgroundColor: colors.semantic.surface, borderRadius: tokens.radius.lg, padding: tokens.spacing.lg, width: '85%', maxWidth: 340 },
+    datePickerTitle: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold, textAlign: 'center', marginBottom: tokens.spacing.xs },
+    datePickerHint: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, textAlign: 'center', marginBottom: tokens.spacing.md, fontFamily: tokens.typography.fontFamily.regular },
+    datePickerInput: { backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md, padding: tokens.spacing.md, fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium, textAlign: 'center', marginBottom: tokens.spacing.md },
+    datePickerButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    datePickerClearBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md },
+    datePickerClearText: { fontSize: tokens.typography.sizes.sm, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerActions: { flexDirection: 'row', gap: tokens.spacing.sm },
+    datePickerCancelBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md, backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md },
+    datePickerCancelText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerSelectBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.lg, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md },
+    datePickerSelectText: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
 });
 
 export default CreditsScreen;

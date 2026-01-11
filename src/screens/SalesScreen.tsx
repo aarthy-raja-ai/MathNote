@@ -14,10 +14,12 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Pencil, Trash2 } from 'lucide-react-native';
-import { Card, Input } from '../components';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
+import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Sale } from '../utils/storage';
@@ -67,6 +69,7 @@ export const SalesScreen: React.FC = () => {
     const { sales, addSale, updateSale, deleteSale, settings } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
+    const [datePickerVisible, setDatePickerVisible] = useState(false);
     const [editingSale, setEditingSale] = useState<Sale | null>(null);
 
     // Form fields
@@ -75,6 +78,11 @@ export const SalesScreen: React.FC = () => {
     const [paidAmount, setPaidAmount] = useState('');
     const [note, setNote] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+
+    // Date filter state
+    const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [dateInputValue, setDateInputValue] = useState('');
 
     const slideAnim = useRef(new Animated.Value(100)).current;
     const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
@@ -190,6 +198,32 @@ export const SalesScreen: React.FC = () => {
         if (!paidAmount) setPaidAmount(text);
     };
 
+    // Date filter handlers
+    const handleFilterChange = (filter: DateFilterType) => {
+        setDateFilter(filter);
+        setSelectedDate(null);
+    };
+
+    const handleCalendarPress = () => {
+        setDateInputValue(selectedDate || today);
+        setDatePickerVisible(true);
+    };
+
+    const handleDateSelect = () => {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (dateRegex.test(dateInputValue)) {
+            setSelectedDate(dateInputValue);
+            setDatePickerVisible(false);
+        } else {
+            Alert.alert('Invalid Date', 'Please enter date in YYYY-MM-DD format');
+        }
+    };
+
+    const clearSelectedDate = () => {
+        setSelectedDate(null);
+        setDatePickerVisible(false);
+    };
+
     // Helper to get sale amounts (handles legacy data)
     const getSaleAmount = (sale: Sale) => {
         const total = sale.totalAmount ?? sale.paidAmount ?? 0;
@@ -197,18 +231,22 @@ export const SalesScreen: React.FC = () => {
         return { total, paid };
     };
 
-    const todaySales = sales.filter((s) => s.date === today);
-    const totalToday = todaySales.reduce((sum, s) => sum + (getSaleAmount(s).paid), 0);
+    // Filter sales based on selected filter and date
+    const filteredSales = filterByDateRange(sales, dateFilter, selectedDate)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const totalFiltered = filteredSales.reduce((sum, s) => sum + (getSaleAmount(s).paid), 0);
 
     const renderSaleItem = ({ item }: { item: Sale }) => {
         const { total, paid } = getSaleAmount(item);
         const isPartial = paid < total && total > 0;
         const remaining = total - paid;
+        const isToday = item.date === today;
 
         // Build subtitle parts
         const subtitleParts: string[] = [];
         if (item.paymentMethod) subtitleParts.push(item.paymentMethod);
         if (isPartial) subtitleParts.push(`Due: ${currency}${remaining}`);
+        if (!isToday) subtitleParts.push(new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
         if (item.note) subtitleParts.push(item.note);
 
         return (
@@ -230,7 +268,7 @@ export const SalesScreen: React.FC = () => {
                     </View>
                 </View>
 
-                {/* Row 2: Payment method, due amount, note */}
+                {/* Row 2: Payment method, due amount, date, note */}
                 {subtitleParts.length > 0 && (
                     <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
                         {subtitleParts.join(' • ')}
@@ -248,13 +286,21 @@ export const SalesScreen: React.FC = () => {
                     <Text style={styles.date}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
                 </View>
 
+                <DateFilter
+                    selected={dateFilter}
+                    onFilterChange={handleFilterChange}
+                    onCalendarPress={handleCalendarPress}
+                    selectedDate={selectedDate}
+                    colors={colors}
+                />
+
                 <Card style={styles.totalCard}>
-                    <Text style={styles.totalLabel}>Today's Received</Text>
-                    <Text style={styles.totalAmount}>{currency} {totalToday.toLocaleString()}</Text>
+                    <Text style={styles.totalLabel}>{getFilterLabel(dateFilter, selectedDate)} Received</Text>
+                    <Text style={styles.totalAmount}>{currency} {totalFiltered.toLocaleString()}</Text>
                 </Card>
 
                 <FlatList
-                    data={todaySales}
+                    data={filteredSales}
                     keyExtractor={(item) => item.id}
                     renderItem={renderSaleItem}
                     showsVerticalScrollIndicator={false}
@@ -262,8 +308,10 @@ export const SalesScreen: React.FC = () => {
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <Text style={styles.emptyIcon}>📊</Text>
-                            <Text style={styles.emptyText}>No sales recorded today</Text>
-                            <Text style={styles.emptySubtext}>Tap the button below to add your first sale</Text>
+                            <Text style={styles.emptyText}>No sales found</Text>
+                            <Text style={styles.emptySubtext}>
+                                {dateFilter === 'today' ? 'Tap the button below to add your first sale' : 'Try a different date range'}
+                            </Text>
                         </View>
                     }
                 />
@@ -272,6 +320,37 @@ export const SalesScreen: React.FC = () => {
             <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
                 <Text style={styles.floatingButtonText}>+ Add Sale</Text>
             </Pressable>
+
+            {/* Date Picker Modal */}
+            <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
+                <View style={styles.datePickerOverlay}>
+                    <View style={styles.datePickerCard}>
+                        <Text style={styles.datePickerTitle}>Select Date</Text>
+                        <Text style={styles.datePickerHint}>Enter date in YYYY-MM-DD format</Text>
+                        <TextInput
+                            style={styles.datePickerInput}
+                            value={dateInputValue}
+                            onChangeText={setDateInputValue}
+                            placeholder="2024-01-15"
+                            placeholderTextColor={colors.text.muted}
+                            keyboardType="numbers-and-punctuation"
+                        />
+                        <View style={styles.datePickerButtons}>
+                            <Pressable style={styles.datePickerClearBtn} onPress={clearSelectedDate}>
+                                <Text style={styles.datePickerClearText}>Clear</Text>
+                            </Pressable>
+                            <View style={styles.datePickerActions}>
+                                <Pressable style={styles.datePickerCancelBtn} onPress={() => setDatePickerVisible(false)}>
+                                    <Text style={styles.datePickerCancelText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable style={styles.datePickerSelectBtn} onPress={handleDateSelect}>
+                                    <Text style={styles.datePickerSelectText}>Select</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             <Modal visible={modalVisible} animationType="none" transparent={true}>
                 <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -411,6 +490,20 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     cancelBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
     saveBtn: { backgroundColor: colors.brand.primary },
     saveBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
+    // Date Picker Modal Styles
+    datePickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+    datePickerCard: { backgroundColor: colors.semantic.surface, borderRadius: tokens.radius.lg, padding: tokens.spacing.lg, width: '85%', maxWidth: 340 },
+    datePickerTitle: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold, textAlign: 'center', marginBottom: tokens.spacing.xs },
+    datePickerHint: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, textAlign: 'center', marginBottom: tokens.spacing.md, fontFamily: tokens.typography.fontFamily.regular },
+    datePickerInput: { backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md, padding: tokens.spacing.md, fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium, textAlign: 'center', marginBottom: tokens.spacing.md },
+    datePickerButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    datePickerClearBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md },
+    datePickerClearText: { fontSize: tokens.typography.sizes.sm, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerActions: { flexDirection: 'row', gap: tokens.spacing.sm },
+    datePickerCancelBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md, backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md },
+    datePickerCancelText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerSelectBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.lg, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md },
+    datePickerSelectText: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
 });
 
 export default SalesScreen;

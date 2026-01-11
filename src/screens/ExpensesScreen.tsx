@@ -11,10 +11,12 @@ import {
     Pressable,
     KeyboardAvoidingView,
     Platform,
+    TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2 } from 'lucide-react-native';
-import { Card, Input } from '../components';
+import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
+import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Expense } from '../utils/storage';
@@ -33,10 +35,14 @@ export const ExpensesScreen: React.FC = () => {
     const { expenses, addExpense, updateExpense, deleteExpense, settings } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
+    const [datePickerVisible, setDatePickerVisible] = useState(false);
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
     const [amount, setAmount] = useState('');
     const [note, setNote] = useState('');
     const [category, setCategory] = useState('other');
+    const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [dateInputValue, setDateInputValue] = useState('');
     const slideAnim = useRef(new Animated.Value(100)).current;
 
     const today = new Date().toISOString().split('T')[0];
@@ -90,8 +96,37 @@ export const ExpensesScreen: React.FC = () => {
         setModalVisible(false);
     };
 
-    const todayExpenses = expenses.filter((e) => e.date === today);
-    const totalToday = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const handleFilterChange = (filter: DateFilterType) => {
+        setDateFilter(filter);
+        setSelectedDate(null); // Clear specific date when changing filter
+    };
+
+    const handleCalendarPress = () => {
+        setDateInputValue(selectedDate || today);
+        setDatePickerVisible(true);
+    };
+
+    const handleDateSelect = () => {
+        // Validate date format (YYYY-MM-DD)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (dateRegex.test(dateInputValue)) {
+            setSelectedDate(dateInputValue);
+            setDatePickerVisible(false);
+        } else {
+            Alert.alert('Invalid Date', 'Please enter date in YYYY-MM-DD format');
+        }
+    };
+
+    const clearSelectedDate = () => {
+        setSelectedDate(null);
+        setDatePickerVisible(false);
+    };
+
+    // Filter expenses based on selected filter and date
+    const filteredExpenses = filterByDateRange(expenses, dateFilter, selectedDate)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     const getCategoryInfo = (catId: string) => {
         return CATEGORIES.find((c) => c.id === catId) || CATEGORIES[CATEGORIES.length - 1];
@@ -99,27 +134,41 @@ export const ExpensesScreen: React.FC = () => {
 
     const renderExpenseItem = ({ item }: { item: Expense }) => {
         const catInfo = getCategoryInfo(item.category);
+        const isToday = item.date === today;
+
+        // Build subtitle parts
+        const subtitleParts: string[] = [];
+        if (item.note) subtitleParts.push(item.note);
+        if (!isToday) subtitleParts.push(new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
+
         return (
-            <Card style={styles.expenseCard}>
-                <View style={styles.expenseRow}>
+            <Pressable
+                style={styles.listItem}
+                onPress={() => handleEdit(item)}
+                onLongPress={() => handleDelete(item.id)}
+            >
+                {/* Row 1: Category + Amount */}
+                <View style={styles.listRow}>
                     <View style={styles.categoryIcon}>
-                        <catInfo.Icon size={22} color={colors.text.primary} strokeWidth={2} />
+                        <catInfo.Icon size={20} color={colors.text.primary} strokeWidth={2} />
                     </View>
-                    <View style={styles.expenseInfo}>
-                        <Text style={styles.expenseCategory}>{catInfo.label}</Text>
-                        <Text style={styles.expenseAmount}>{currency} {item.amount.toLocaleString()}</Text>
-                        {item.note ? <Text style={styles.expenseNote}>{item.note}</Text> : null}
-                    </View>
-                    <View style={styles.expenseActions}>
-                        <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                            <Pencil size={18} color={colors.text.muted} strokeWidth={2} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionBtn}>
-                            <Trash2 size={18} color={colors.text.muted} strokeWidth={2} />
-                        </TouchableOpacity>
+                    <View style={styles.listInfo}>
+                        <Text style={styles.listName} numberOfLines={1} ellipsizeMode="tail">
+                            {catInfo.label}
+                        </Text>
+                        <Text style={styles.listAmount}>
+                            {currency} {item.amount.toLocaleString()}
+                        </Text>
                     </View>
                 </View>
-            </Card>
+
+                {/* Row 2: Note, date */}
+                {subtitleParts.length > 0 && (
+                    <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                        {subtitleParts.join(' • ')}
+                    </Text>
+                )}
+            </Pressable>
         );
     };
 
@@ -131,22 +180,32 @@ export const ExpensesScreen: React.FC = () => {
                     <Text style={styles.date}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
                 </View>
 
+                <DateFilter
+                    selected={dateFilter}
+                    onFilterChange={handleFilterChange}
+                    onCalendarPress={handleCalendarPress}
+                    selectedDate={selectedDate}
+                    colors={colors}
+                />
+
                 <Card style={styles.totalCard}>
-                    <Text style={styles.totalLabel}>Today's Total</Text>
-                    <Text style={styles.totalAmount}>{currency} {totalToday.toLocaleString()}</Text>
+                    <Text style={styles.totalLabel}>{getFilterLabel(dateFilter, selectedDate)} Total</Text>
+                    <Text style={styles.totalAmount}>{currency} {totalFiltered.toLocaleString()}</Text>
                 </Card>
 
                 <FlatList
-                    data={todayExpenses}
+                    data={filteredExpenses}
                     keyExtractor={(item) => item.id}
                     renderItem={renderExpenseItem}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyIcon}>💸</Text>
-                            <Text style={styles.emptyText}>No expenses recorded today</Text>
-                            <Text style={styles.emptySubtext}>Tap the button below to add an expense</Text>
+                            <Wallet size={48} color={colors.text.muted} strokeWidth={1.5} />
+                            <Text style={styles.emptyText}>No expenses found</Text>
+                            <Text style={styles.emptySubtext}>
+                                {dateFilter === 'today' ? 'Tap the button below to add an expense' : 'Try a different date range'}
+                            </Text>
                         </View>
                     }
                 />
@@ -155,6 +214,37 @@ export const ExpensesScreen: React.FC = () => {
             <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
                 <Text style={styles.floatingButtonText}>+ Add Expense</Text>
             </Pressable>
+
+            {/* Date Picker Modal */}
+            <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
+                <View style={styles.datePickerOverlay}>
+                    <View style={styles.datePickerCard}>
+                        <Text style={styles.datePickerTitle}>Select Date</Text>
+                        <Text style={styles.datePickerHint}>Enter date in YYYY-MM-DD format</Text>
+                        <TextInput
+                            style={styles.datePickerInput}
+                            value={dateInputValue}
+                            onChangeText={setDateInputValue}
+                            placeholder="2024-01-15"
+                            placeholderTextColor={colors.text.muted}
+                            keyboardType="numbers-and-punctuation"
+                        />
+                        <View style={styles.datePickerButtons}>
+                            <Pressable style={styles.datePickerClearBtn} onPress={clearSelectedDate}>
+                                <Text style={styles.datePickerClearText}>Clear</Text>
+                            </Pressable>
+                            <View style={styles.datePickerActions}>
+                                <Pressable style={styles.datePickerCancelBtn} onPress={() => setDatePickerVisible(false)}>
+                                    <Text style={styles.datePickerCancelText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable style={styles.datePickerSelectBtn} onPress={handleDateSelect}>
+                                    <Text style={styles.datePickerSelectText}>Select</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             <Modal visible={modalVisible} animationType="slide" transparent={true}>
                 <KeyboardAvoidingView
@@ -206,16 +296,43 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     totalCard: { backgroundColor: colors.brand.primary, marginBottom: tokens.spacing.md },
     totalLabel: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.regular },
     totalAmount: { fontSize: tokens.typography.sizes.xxl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
-    expenseCard: { marginBottom: tokens.spacing.sm, backgroundColor: colors.semantic.surface },
-    expenseRow: { flexDirection: 'row', alignItems: 'center' },
-    categoryIcon: { width: 44, height: 44, borderRadius: tokens.radius.md, backgroundColor: colors.semantic.soft, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
-    iconText: { fontSize: 22 },
-    expenseInfo: { flex: 1 },
-    expenseCategory: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.regular },
-    expenseAmount: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
-    expenseNote: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
-    expenseActions: { flexDirection: 'row' },
-    actionBtn: { padding: tokens.spacing.xs },
+    // Compact List Item Styles (matching Sales screen)
+    listItem: {
+        paddingVertical: 10,
+        paddingHorizontal: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border.default,
+    },
+    listRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    categoryIcon: { width: 40, height: 40, borderRadius: tokens.radius.md, backgroundColor: colors.semantic.soft, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
+    listInfo: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    listName: {
+        flex: 1,
+        fontSize: 14,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginRight: 8,
+    },
+    listAmount: {
+        fontSize: 14,
+        color: colors.brand.secondary,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    listSubtitle: {
+        fontSize: 12,
+        color: colors.text.muted,
+        fontFamily: tokens.typography.fontFamily.regular,
+        marginTop: 2,
+        marginLeft: 52, // Align with text after icon
+    },
     emptyContainer: { alignItems: 'center', paddingVertical: tokens.spacing.xxl },
     emptyIcon: { fontSize: 48, marginBottom: tokens.spacing.md },
     emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
@@ -244,6 +361,21 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     cancelBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
     saveBtn: { backgroundColor: colors.brand.primary },
     saveBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
+    expenseDate: { fontSize: tokens.typography.sizes.xs, color: colors.brand.primary, marginTop: 2, fontFamily: tokens.typography.fontFamily.medium },
+    // Date Picker Modal Styles
+    datePickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+    datePickerCard: { backgroundColor: colors.semantic.surface, borderRadius: tokens.radius.lg, padding: tokens.spacing.lg, width: '85%', maxWidth: 340 },
+    datePickerTitle: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold, textAlign: 'center', marginBottom: tokens.spacing.xs },
+    datePickerHint: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, textAlign: 'center', marginBottom: tokens.spacing.md, fontFamily: tokens.typography.fontFamily.regular },
+    datePickerInput: { backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md, padding: tokens.spacing.md, fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium, textAlign: 'center', marginBottom: tokens.spacing.md },
+    datePickerButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    datePickerClearBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md },
+    datePickerClearText: { fontSize: tokens.typography.sizes.sm, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerActions: { flexDirection: 'row', gap: tokens.spacing.sm },
+    datePickerCancelBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md, backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md },
+    datePickerCancelText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerSelectBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.lg, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md },
+    datePickerSelectText: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
 });
 
 export default ExpensesScreen;

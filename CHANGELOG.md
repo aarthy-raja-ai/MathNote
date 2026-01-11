@@ -2,6 +2,28 @@
 
 All notable changes to Math Note are documented in this file.
 
+## [1.4.0] - 2026-01-11
+
+### ✨ New Features
+
+#### Date Filter Improvements
+- Fixed **"Today" filter** date comparison to use local timezone
+- Prevents timezone mismatch issues with UTC date strings
+
+#### Unified Transaction List UI
+- Updated **Expenses** and **Credits** screens to use same compact list style as Sales
+- Consistent row layout: icon + name + amount, subtitle with details
+- Tap to edit, long-press to delete on all list items
+- Removed **All/Customers/Vendors** filter tabs from Credits screen
+
+### 🎨 Design Changes
+
+#### Lucide Icon Updates
+- Replaced 💸 emoji with **Wallet** icon in Expenses empty state
+- Replaced 🤝 emoji with **Handshake** icon in Credits empty state
+
+---
+
 ## [1.3.0] - 2026-01-08
 
 ### ✨ New Features
