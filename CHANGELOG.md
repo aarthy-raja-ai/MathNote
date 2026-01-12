@@ -2,6 +2,18 @@
 
 All notable changes to Math Note are documented in this file.
 
+## [1.4.1] - 2026-01-12
+
+### ✨ New Features
+
+#### Credits Partial Payment UI
+- Added **"Record Payment"** button to each pending credit item
+- Added **"View History"** button to view payment history
+- Buttons appear below each credit entry for quick access
+- Modal integration for recording partial payments and viewing transaction history
+
+---
+
 ## [1.4.0] - 2026-01-11
 
 ### ✨ New Features

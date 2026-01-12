@@ -222,6 +222,26 @@ export const CreditsScreen: React.FC = () => {
                 <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
                     {subtitleParts.join(' • ')}
                 </Text>
+
+                {/* Row 3: Action Buttons */}
+                {item.status === 'pending' && (
+                    <View style={styles.actionRow}>
+                        <Pressable
+                            style={styles.actionBtn}
+                            onPress={() => handleRecordPayment(item)}
+                        >
+                            <Banknote size={14} color={colors.semantic.success} />
+                            <Text style={styles.actionBtnText}>Record Payment</Text>
+                        </Pressable>
+                        <Pressable
+                            style={styles.actionBtn}
+                            onPress={() => handleViewHistory(item)}
+                        >
+                            <History size={14} color={colors.brand.secondary} />
+                            <Text style={[styles.actionBtnText, { color: colors.brand.secondary }]}>History</Text>
+                        </Pressable>
+                    </View>
+                )}
             </Pressable>
         );
     };
@@ -515,7 +535,26 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     creditDate: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
     creditActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     statusBtn: { padding: tokens.spacing.xs },
-    actionBtn: { padding: tokens.spacing.xs },
+    actionRow: {
+        flexDirection: 'row',
+        gap: tokens.spacing.md,
+        marginTop: tokens.spacing.xs,
+        marginLeft: 48
+    },
+    actionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: tokens.spacing.xs,
+        paddingHorizontal: tokens.spacing.sm,
+        backgroundColor: colors.semantic.soft,
+        borderRadius: tokens.radius.sm
+    },
+    actionBtnText: {
+        fontSize: tokens.typography.sizes.xs,
+        color: colors.semantic.success,
+        fontFamily: tokens.typography.fontFamily.medium
+    },
     emptyContainer: { alignItems: 'center', paddingVertical: tokens.spacing.xxl },
     emptyIcon: { fontSize: 48, marginBottom: tokens.spacing.md },
     emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
