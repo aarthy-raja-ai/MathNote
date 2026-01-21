@@ -116,6 +116,17 @@ export const tokens = {
                 elevation: 6,
             },
         }) || {},
+        modal: Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.15,
+                shadowRadius: 24,
+            },
+            android: {
+                elevation: 12,
+            },
+        }) || {},
     },
 
     motion: {

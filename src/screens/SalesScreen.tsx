@@ -17,12 +17,14 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Pencil, Trash2 } from 'lucide-react-native';
+import { Pencil, Trash2, Share2, FileText } from 'lucide-react-native';
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Sale } from '../utils/storage';
+import { generateInvoicePDF } from '../utils/invoiceGenerator';
+import { evaluateMath } from '../utils/mathEvaluator';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.70;
@@ -155,8 +157,15 @@ export const SalesScreen: React.FC = () => {
     };
 
     const handleSave = async () => {
-        const parsedTotal = parseFloat(totalAmount);
-        const parsedPaid = paidAmount ? parseFloat(paidAmount) : parsedTotal; // Default to full payment
+        let parsedTotal = parseFloat(totalAmount);
+
+        // If parsing fails, try math evaluation
+        if (isNaN(parsedTotal)) {
+            const mathResult = evaluateMath(totalAmount);
+            if (mathResult !== null) parsedTotal = mathResult;
+        }
+
+        const parsedPaid = paidAmount ? parseFloat(paidAmount) : parsedTotal;
 
         if (isNaN(parsedTotal) || parsedTotal <= 0) {
             Alert.alert('Error', 'Please enter a valid total amount');
@@ -265,6 +274,12 @@ export const SalesScreen: React.FC = () => {
                         <Text style={styles.listAmount}>
                             {currency} {total.toLocaleString()}
                         </Text>
+                        <Pressable
+                            onPress={() => generateInvoicePDF(item, settings)}
+                            style={styles.shareButton}
+                        >
+                            <Share2 size={18} color={colors.brand.primary} />
+                        </Pressable>
                     </View>
                 </View>
 
@@ -457,6 +472,10 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         fontSize: 14,
         color: colors.brand.secondary,
         fontFamily: tokens.typography.fontFamily.bold,
+    },
+    shareButton: {
+        padding: 5,
+        marginLeft: 4,
     },
     listSubtitle: {
         fontSize: 12,

@@ -2,17 +2,58 @@
 
 All notable changes to Math Note are documented in this file.
 
-## [1.4.1] - 2026-01-12
+## [1.6.0] - 2026-01-21
 
 ### ✨ New Features
 
-#### Credits Partial Payment UI
-- Added **"Record Payment"** button to each pending credit item
-- Added **"View History"** button to view payment history
-- Buttons appear below each credit entry for quick access
-- Modal integration for recording partial payments and viewing transaction history
+#### Grouped Credits View 👥
+- **Smart Grouping**: Transactions are now automatically grouped by customer/vendor name.
+- **Summary Cards**: View total credit, debit, and net balance for each party at a glance.
+- **Expandable Rows**: Tap a group to reveal the full history of individual transactions.
+
+#### Magic Note (NLP Entry) 🪄
+- **Natural Language Input**: Add sales, expenses, and credits by typing naturally (e.g., "Sold 500 to Rahul").
+- **Smart Parsing**: Automatically identifies transaction types, amounts, parties, and categories.
+- **Verification Modal**: Review and confirm details before saving to prevent errors.
+- **Cycling Hints**: On-screen prompts to help users learn the Magic Note commands.
+
+#### Pro Invoicing & Sharing 📄
+- **PDF Invoice Generation**: Create professional, branded invoices for all sales.
+- **WhatsApp Share**: Send invoices directly to customers with one tap.
+- **One-Tap Reminders**: Send quick WhatsApp payment reminders for pending credits.
+
+#### Smart Math Calculator 🧮
+- **Expression Support**: Enter math directly in amount fields (e.g., `50*3 + 100`).
+- **Real-time Evaluation**: Automatically resolves calculations in both Magic Note and manual forms.
+
+### 🐛 Bug Fixes
+- **Sales Screen**: Resolved `useApp()` reference error and improved stability.
+- **Credits Screen**: Fixed UI anomalies and improved layout consistency.
 
 ---
+
+## [1.5.0] - 2026-01-17
+
+### ✨ New Features
+
+#### Magic Note (NLP Entry) 🪄
+- **Natural Language Input**: Add sales, expenses, and credits by typing naturally (e.g., "Sold 500 to Rahul").
+- **Smart Parsing**: Automatically identifies transaction types, amounts, parties, and categories.
+- **Verification Modal**: Review and confirm details before saving to prevent errors.
+- **Cycling Hints**: On-screen prompts to help users learn the Magic Note commands.
+
+#### Pro Invoicing & Sharing 📄
+- **PDF Invoice Generation**: Create professional, branded invoices for all sales.
+- **WhatsApp Share**: Send invoices directly to customers with one tap.
+- **One-Tap Reminders**: Send quick WhatsApp payment reminders for pending credits.
+
+#### Smart Math Calculator 🧮
+- **Expression Support**: Enter math directly in amount fields (e.g., `50*3 + 100`).
+- **Real-time Evaluation**: Automatically resolves calculations in both Magic Note and manual forms.
+
+---
+
+## [1.4.1] - 2026-01-12
 
 ## [1.4.0] - 2026-01-11
 

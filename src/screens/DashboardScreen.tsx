@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Animated, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Animated, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { TrendingUp, Receipt, Handshake } from 'lucide-react-native';
+import { TrendingUp, Receipt, Handshake, Sparkles, Send, X, Check, Settings as SettingsIcon } from 'lucide-react-native';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
+import { parseMagicNote, ParsedTransaction } from '../utils/nlpParser';
+import { Modal, TextInput, KeyboardAvoidingView, Alert } from 'react-native';
 
 interface QuickActionProps {
     icon: React.ReactNode;
@@ -91,6 +93,31 @@ export const DashboardScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
+    // Magic Note State
+    const [magicNote, setMagicNote] = React.useState('');
+    const [parsedData, setParsedData] = React.useState<ParsedTransaction | null>(null);
+    const [showPreview, setShowPreview] = React.useState(false);
+    const [isProcessing, setIsProcessing] = React.useState(false);
+
+    // Hint Cycling
+    const hints = [
+        "Type: 'Sold 500 to Rahul'",
+        "Type: 'Spent 200 on Lunch'",
+        "Type: 'Lent 1000 to Ajay cash'",
+        "Try Math: 'Sold 50*8 to Shop'",
+        "Try: 'Bought 150 Petrol'",
+    ];
+    const [hintIndex, setHintIndex] = React.useState(0);
+
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            setHintIndex((prev) => (prev + 1) % hints.length);
+        }, 4000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const { addSale, addExpense, addCredit } = useApp();
+
     useEffect(() => {
         Animated.timing(fadeAnim, {
             toValue: 1,
@@ -137,15 +164,99 @@ export const DashboardScreen: React.FC = () => {
         },
     ];
 
+    const handleMagicSubmit = () => {
+        if (!magicNote.trim()) return;
+
+        const parsed = parseMagicNote(magicNote);
+        if (parsed) {
+            setParsedData(parsed);
+            setShowPreview(true);
+        } else {
+            Alert.alert('Parser Error', "Could not understand that. Try: 'Sold 500 to Rahul' or 'Spent 200 on Lunch'");
+        }
+    };
+
+    const confirmMagicNote = async () => {
+        if (!parsedData) return;
+        setIsProcessing(true);
+
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            if (parsedData.type === 'sale') {
+                await addSale({
+                    date: today,
+                    customerName: parsedData.party || 'Walk-in',
+                    totalAmount: parsedData.amount,
+                    paidAmount: parsedData.paidAmount || parsedData.amount,
+                    paymentMethod: parsedData.paymentMethod,
+                    note: parsedData.note || '',
+                });
+            } else if (parsedData.type === 'expense') {
+                await addExpense({
+                    date: today,
+                    category: parsedData.category || 'Other',
+                    amount: parsedData.amount,
+                    note: parsedData.note || '',
+                    paymentMethod: parsedData.paymentMethod,
+                });
+            } else if (parsedData.type === 'credit') {
+                await addCredit({
+                    date: today,
+                    party: parsedData.party || 'Unknown',
+                    amount: parsedData.amount,
+                    type: parsedData.creditType || 'given',
+                    status: 'pending',
+                    paymentMode: parsedData.paymentMethod,
+                });
+            }
+
+            setMagicNote('');
+            setShowPreview(false);
+            setParsedData(null);
+            Alert.alert('Success', `${parsedData.type.charAt(0).toUpperCase() + parsedData.type.slice(1)} added successfully!`);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to save transaction');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
                     {/* Header */}
                     <View style={styles.header}>
-                        <Text style={styles.greeting}>Welcome back! 👋</Text>
-                        <Text style={styles.title}>Math Note</Text>
+                        <View style={styles.headerTop}>
+                            <View>
+                                <Text style={styles.greeting}>Welcome back! 👋</Text>
+                                <Text style={styles.title}>Math Note</Text>
+                            </View>
+                            <Pressable onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
+                                <SettingsIcon size={24} color={colors.text.secondary} />
+                            </Pressable>
+                        </View>
                         <Text style={styles.tagline}>Every Number. Clearly Noted.</Text>
+                    </View>
+
+                    {/* Magic Note Bar */}
+                    <View style={styles.magicBarContainer}>
+                        <View style={styles.magicInputWrapper}>
+                            <Sparkles size={20} color={colors.brand.primary} style={styles.magicIcon} />
+                            <TextInput
+                                style={styles.magicInput}
+                                placeholder={hints[hintIndex]}
+                                placeholderTextColor={colors.text.muted}
+                                value={magicNote}
+                                onChangeText={setMagicNote}
+                                onSubmitEditing={handleMagicSubmit}
+                            />
+                            {magicNote.length > 0 && (
+                                <Pressable onPress={handleMagicSubmit} style={styles.sendButton}>
+                                    <Send size={20} color={colors.brand.primary} />
+                                </Pressable>
+                            )}
+                        </View>
                     </View>
 
                     {/* Summary Cards */}
@@ -204,6 +315,73 @@ export const DashboardScreen: React.FC = () => {
                     </View>
                 </ScrollView>
             </Animated.View>
+
+            {/* Preview Modal */}
+            <Modal visible={showPreview} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={() => setShowPreview(false)} />
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalContent}>
+                        <View style={styles.previewCard}>
+                            <View style={styles.previewHeader}>
+                                <View style={styles.iconCircle}>
+                                    <Sparkles size={24} color={colors.text.inverse} />
+                                </View>
+                                <Text style={styles.previewTitle}>Confirm Entry</Text>
+                                <Pressable onPress={() => setShowPreview(false)}>
+                                    <X size={24} color={colors.text.secondary} />
+                                </Pressable>
+                            </View>
+
+                            {parsedData && (
+                                <View style={styles.previewDetails}>
+                                    <View style={styles.detailRow}>
+                                        <Text style={styles.detailLabel}>Type</Text>
+                                        <Text style={[styles.detailValue, { color: colors.brand.primary, textTransform: 'capitalize' }]}>
+                                            {parsedData.type}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.detailRow}>
+                                        <Text style={styles.detailLabel}>Amount</Text>
+                                        <Text style={styles.detailValue}>{currency} {parsedData.amount.toLocaleString()}</Text>
+                                    </View>
+                                    {parsedData.party && (
+                                        <View style={styles.detailRow}>
+                                            <Text style={styles.detailLabel}>Party/Name</Text>
+                                            <Text style={styles.detailValue}>{parsedData.party}</Text>
+                                        </View>
+                                    )}
+                                    {parsedData.category && (
+                                        <View style={styles.detailRow}>
+                                            <Text style={styles.detailLabel}>Category</Text>
+                                            <Text style={styles.detailValue}>{parsedData.category}</Text>
+                                        </View>
+                                    )}
+                                    <View style={styles.detailRow}>
+                                        <Text style={styles.detailLabel}>Method</Text>
+                                        <Text style={styles.detailValue}>{parsedData.paymentMethod}</Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            <View style={styles.previewButtons}>
+                                <Pressable style={styles.cancelPreview} onPress={() => setShowPreview(false)}>
+                                    <Text style={styles.cancelText}>Edit</Text>
+                                </Pressable>
+                                <Pressable style={styles.confirmPreview} onPress={confirmMagicNote}>
+                                    {isProcessing ? (
+                                        <ActivityIndicator color="#fff" />
+                                    ) : (
+                                        <>
+                                            <Check size={20} color="#fff" style={{ marginRight: 8 }} />
+                                            <Text style={styles.confirmText}>Add Now</Text>
+                                        </>
+                                    )}
+                                </Pressable>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -233,7 +411,41 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     },
     header: {
         paddingTop: tokens.spacing.lg,
-        paddingBottom: tokens.spacing.xl,
+        paddingBottom: tokens.spacing.md,
+    },
+    headerTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    settingsIcon: {
+        padding: 10,
+    },
+    magicBarContainer: {
+        marginBottom: tokens.spacing.lg,
+    },
+    magicInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.semantic.surface,
+        borderRadius: 20,
+        paddingHorizontal: tokens.spacing.md,
+        height: 56,
+        ...tokens.shadow.card,
+        borderWidth: 1,
+        borderColor: colors.brand.primary + '33',
+    },
+    magicIcon: {
+        marginRight: tokens.spacing.sm,
+    },
+    magicInput: {
+        flex: 1,
+        fontSize: 15,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    sendButton: {
+        padding: 8,
     },
     greeting: {
         fontSize: tokens.typography.sizes.md,
@@ -338,6 +550,101 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: tokens.spacing.xl,
         gap: 12,
+    },
+    // Preview Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        padding: tokens.spacing.xl,
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    modalContent: {
+        width: '100%',
+    },
+    previewCard: {
+        backgroundColor: colors.semantic.surface,
+        borderRadius: 24,
+        padding: tokens.spacing.lg,
+        ...tokens.shadow.modal,
+    },
+    previewHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: tokens.spacing.lg,
+    },
+    iconCircle: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: colors.brand.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    previewTitle: {
+        fontSize: 20,
+        fontFamily: tokens.typography.fontFamily.bold,
+        color: colors.text.primary,
+        flex: 1,
+        marginLeft: 12,
+    },
+    previewDetails: {
+        backgroundColor: colors.semantic.background,
+        borderRadius: 16,
+        padding: tokens.spacing.md,
+        marginBottom: tokens.spacing.xl,
+    },
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border.default,
+    },
+    detailLabel: {
+        fontSize: 14,
+        color: colors.text.secondary,
+        fontFamily: tokens.typography.fontFamily.regular,
+    },
+    detailValue: {
+        fontSize: 16,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.semibold,
+    },
+    previewButtons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    cancelPreview: {
+        flex: 1,
+        height: 52,
+        borderRadius: 16,
+        borderWidth: 1.5,
+        borderColor: colors.border.default,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    confirmPreview: {
+        flex: 2,
+        height: 52,
+        borderRadius: 16,
+        backgroundColor: colors.brand.primary,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    cancelText: {
+        fontSize: 16,
+        fontFamily: tokens.typography.fontFamily.semibold,
+        color: colors.text.secondary,
+    },
+    confirmText: {
+        fontSize: 16,
+        fontFamily: tokens.typography.fontFamily.semibold,
+        color: '#fff',
     },
 });
 

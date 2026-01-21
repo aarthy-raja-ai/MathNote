@@ -12,9 +12,10 @@ import {
     KeyboardAvoidingView,
     Platform,
     TextInput,
+    Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake, MessageCircle } from 'lucide-react-native';
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
@@ -139,6 +140,20 @@ export const CreditsScreen: React.FC = () => {
         setModalVisible(false);
     };
 
+    const handleWhatsAppReminder = (credit: Credit) => {
+        const dueAmount = credit.amount - (credit.paidAmount || 0);
+        const message = `Hello ${credit.party}, this is a friendly reminder from MathNote regarding your pending balance of ${currency}${dueAmount.toLocaleString()}. Please let us know if you have any questions. Thank you!`;
+        const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
+
+        Linking.canOpenURL(url).then(supported => {
+            if (supported) {
+                Linking.openURL(url);
+            } else {
+                Alert.alert('Error', 'WhatsApp is not installed on your device');
+            }
+        });
+    };
+
     // Date filter handlers
     const handleDateFilterChange = (filter: DateFilterType) => {
         setDateFilter(filter);
@@ -171,8 +186,70 @@ export const CreditsScreen: React.FC = () => {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Calculate pending amounts from filtered credits
-    const pendingGiven = filteredCredits.filter((c) => c.type === 'given' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
-    const pendingTaken = filteredCredits.filter((c) => c.type === 'taken' && c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
+    const pendingGiven = filteredCredits.filter((c) => c.type === 'given' && c.status === 'pending').reduce((sum, c) => sum + c.amount - (c.paidAmount || 0), 0);
+    const pendingTaken = filteredCredits.filter((c) => c.type === 'taken' && c.status === 'pending').reduce((sum, c) => sum + c.amount - (c.paidAmount || 0), 0);
+
+    // Group credits by party name
+    interface GroupedParty {
+        party: string;
+        credits: Credit[];
+        totalGiven: number;
+        totalTaken: number;
+        dueGiven: number;
+        dueTaken: number;
+        netBalance: number;
+        latestDate: string;
+    }
+
+    const groupedCredits = useMemo(() => {
+        const groups: { [key: string]: GroupedParty } = {};
+
+        filteredCredits.forEach((credit) => {
+            const partyKey = credit.party.toLowerCase().trim();
+            if (!groups[partyKey]) {
+                groups[partyKey] = {
+                    party: credit.party,
+                    credits: [],
+                    totalGiven: 0,
+                    totalTaken: 0,
+                    dueGiven: 0,
+                    dueTaken: 0,
+                    netBalance: 0,
+                    latestDate: credit.date,
+                };
+            }
+
+            groups[partyKey].credits.push(credit);
+            const dueAmount = credit.amount - (credit.paidAmount || 0);
+
+            if (credit.type === 'given') {
+                groups[partyKey].totalGiven += credit.amount;
+                if (credit.status === 'pending') {
+                    groups[partyKey].dueGiven += dueAmount;
+                }
+            } else {
+                groups[partyKey].totalTaken += credit.amount;
+                if (credit.status === 'pending') {
+                    groups[partyKey].dueTaken += dueAmount;
+                }
+            }
+
+            // Update latest date
+            if (new Date(credit.date) > new Date(groups[partyKey].latestDate)) {
+                groups[partyKey].latestDate = credit.date;
+            }
+        });
+
+        // Calculate net balance (positive = they owe you, negative = you owe them)
+        Object.values(groups).forEach((group) => {
+            group.netBalance = group.dueGiven - group.dueTaken;
+        });
+
+        // Sort by latest date
+        return Object.values(groups).sort((a, b) =>
+            new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime()
+        );
+    }, [filteredCredits]);
 
     // Get linked sale for a credit
     const getLinkedSale = (credit: Credit) => {
@@ -180,7 +257,22 @@ export const CreditsScreen: React.FC = () => {
         return sales.find((s) => s.id === credit.linkedSaleId);
     };
 
-    const renderCreditItem = ({ item }: { item: Credit }) => {
+    // State for expanded parties
+    const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set());
+
+    const togglePartyExpand = (party: string) => {
+        setExpandedParties(prev => {
+            const next = new Set(prev);
+            if (next.has(party)) {
+                next.delete(party);
+            } else {
+                next.add(party);
+            }
+            return next;
+        });
+    };
+
+    const renderCreditItem = (item: Credit, isSubItem: boolean = false) => {
         const linkedSale = getLinkedSale(item);
         const isToday = item.date === today;
         const dueAmount = item.amount - (item.paidAmount || 0);
@@ -194,55 +286,173 @@ export const CreditsScreen: React.FC = () => {
 
         return (
             <Pressable
-                style={[styles.listItem, item.status === 'paid' && styles.paidItem]}
+                key={item.id}
+                style={[styles.subListItem, item.status === 'paid' && styles.paidItem]}
                 onPress={() => handleEdit(item)}
                 onLongPress={() => handleDelete(item)}
             >
-                {/* Row 1: Party name + Amount */}
+                {/* Row 1: Type icon + Amount */}
                 <View style={styles.listRow}>
                     <View style={[styles.typeIcon, item.type === 'given' ? styles.givenIcon : styles.takenIcon]}>
                         {item.type === 'given' ? (
-                            <ArrowUpRight size={18} color={colors.semantic.success} strokeWidth={2.5} />
+                            <ArrowUpRight size={14} color={colors.semantic.success} strokeWidth={2.5} />
                         ) : (
-                            <ArrowDownLeft size={18} color={colors.brand.primary} strokeWidth={2.5} />
+                            <ArrowDownLeft size={14} color={colors.brand.primary} strokeWidth={2.5} />
                         )}
                     </View>
-                    <Text style={styles.listName} numberOfLines={1} ellipsizeMode="tail">
-                        {item.party}
+                    <Text style={styles.subItemAmount}>
+                        {currency} {item.amount.toLocaleString()}
                     </Text>
                     <View style={styles.amountRow}>
-                        {linkedSale && <Link size={12} color={colors.brand.secondary} strokeWidth={2} />}
-                        <Text style={[styles.listAmount, item.type === 'given' ? styles.givenAmount : styles.takenAmount]}>
-                            {currency} {item.amount.toLocaleString()}
+                        {linkedSale && <Link size={10} color={colors.brand.secondary} strokeWidth={2} />}
+                        <Text style={[styles.subItemDue, item.type === 'given' ? styles.givenAmount : styles.takenAmount]}>
+                            Due: {currency}{dueAmount.toLocaleString()}
                         </Text>
                     </View>
                 </View>
 
-                {/* Row 2: Type, payment mode, due, date */}
-                <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                {/* Row 2: Subtitle */}
+                <Text style={styles.subItemSubtitle} numberOfLines={1} ellipsizeMode="tail">
                     {subtitleParts.join(' • ')}
                 </Text>
 
                 {/* Row 3: Action Buttons */}
                 {item.status === 'pending' && (
-                    <View style={styles.actionRow}>
+                    <View style={styles.subActionRow}>
                         <Pressable
-                            style={styles.actionBtn}
+                            style={styles.smallActionBtn}
                             onPress={() => handleRecordPayment(item)}
                         >
-                            <Banknote size={14} color={colors.semantic.success} />
-                            <Text style={styles.actionBtnText}>Record Payment</Text>
+                            <Banknote size={12} color={colors.semantic.success} />
+                            <Text style={styles.smallActionBtnText}>Pay</Text>
                         </Pressable>
                         <Pressable
-                            style={styles.actionBtn}
+                            style={styles.smallActionBtn}
                             onPress={() => handleViewHistory(item)}
                         >
-                            <History size={14} color={colors.brand.secondary} />
-                            <Text style={[styles.actionBtnText, { color: colors.brand.secondary }]}>History</Text>
+                            <History size={12} color={colors.brand.secondary} />
+                            <Text style={[styles.smallActionBtnText, { color: colors.brand.secondary }]}>History</Text>
                         </Pressable>
+                        {item.type === 'given' && (
+                            <Pressable
+                                style={[styles.smallActionBtn, { backgroundColor: '#E7FFEB' }]}
+                                onPress={() => handleWhatsAppReminder(item)}
+                            >
+                                <MessageCircle size={12} color="#25D366" />
+                                <Text style={[styles.smallActionBtnText, { color: '#25D366' }]}>Remind</Text>
+                            </Pressable>
+                        )}
                     </View>
                 )}
             </Pressable>
+        );
+    };
+
+    interface GroupedPartyType {
+        party: string;
+        credits: Credit[];
+        totalGiven: number;
+        totalTaken: number;
+        dueGiven: number;
+        dueTaken: number;
+        netBalance: number;
+        latestDate: string;
+    }
+
+    const renderGroupedParty = ({ item }: { item: GroupedPartyType }) => {
+        const isExpanded = expandedParties.has(item.party);
+        const hasGiven = item.dueGiven > 0;
+        const hasTaken = item.dueTaken > 0;
+
+        return (
+            <View style={styles.groupCard}>
+                {/* Party Header - Tappable */}
+                <Pressable
+                    style={styles.groupHeader}
+                    onPress={() => togglePartyExpand(item.party)}
+                >
+                    <View style={styles.groupHeaderLeft}>
+                        <View style={[
+                            styles.groupIcon,
+                            item.netBalance > 0 ? styles.givenIcon : item.netBalance < 0 ? styles.takenIcon : styles.neutralIcon
+                        ]}>
+                            {item.netBalance > 0 ? (
+                                <ArrowUpRight size={20} color={colors.semantic.success} strokeWidth={2.5} />
+                            ) : item.netBalance < 0 ? (
+                                <ArrowDownLeft size={20} color={colors.brand.primary} strokeWidth={2.5} />
+                            ) : (
+                                <CheckCircle size={20} color={colors.text.muted} strokeWidth={2} />
+                            )}
+                        </View>
+                        <View>
+                            <Text style={styles.groupPartyName}>{item.party}</Text>
+                            <Text style={styles.groupTransactionCount}>
+                                {item.credits.length} transaction{item.credits.length > 1 ? 's' : ''}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.groupHeaderRight}>
+                        {item.netBalance !== 0 && (
+                            <View style={[
+                                styles.netBalanceBadge,
+                                item.netBalance > 0 ? styles.netPositive : styles.netNegative
+                            ]}>
+                                <Text style={[
+                                    styles.netBalanceText,
+                                    item.netBalance > 0 ? styles.netPositiveText : styles.netNegativeText
+                                ]}>
+                                    {item.netBalance > 0 ? 'To Receive' : 'To Pay'}
+                                </Text>
+                                <Text style={[
+                                    styles.netBalanceAmount,
+                                    item.netBalance > 0 ? styles.netPositiveText : styles.netNegativeText
+                                ]}>
+                                    {currency} {Math.abs(item.netBalance).toLocaleString()}
+                                </Text>
+                            </View>
+                        )}
+                        {item.netBalance === 0 && (
+                            <View style={styles.settledBadge}>
+                                <Text style={styles.settledText}>Settled</Text>
+                            </View>
+                        )}
+                    </View>
+                </Pressable>
+
+                {/* Summary Row */}
+                <View style={styles.groupSummaryRow}>
+                    {hasGiven && (
+                        <View style={styles.summaryChip}>
+                            <ArrowUpRight size={12} color={colors.semantic.success} />
+                            <Text style={styles.summaryChipText}>Given: {currency}{item.dueGiven.toLocaleString()}</Text>
+                        </View>
+                    )}
+                    {hasTaken && (
+                        <View style={styles.summaryChip}>
+                            <ArrowDownLeft size={12} color={colors.brand.primary} />
+                            <Text style={styles.summaryChipTextTaken}>Taken: {currency}{item.dueTaken.toLocaleString()}</Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Expanded Credits List */}
+                {isExpanded && (
+                    <View style={styles.expandedCredits}>
+                        {item.credits.map((credit) => renderCreditItem(credit, true))}
+                    </View>
+                )}
+
+                {/* Expand/Collapse indicator */}
+                <Pressable
+                    style={styles.expandButton}
+                    onPress={() => togglePartyExpand(item.party)}
+                >
+                    <Text style={styles.expandButtonText}>
+                        {isExpanded ? 'Hide Details' : 'Show Details'}
+                    </Text>
+                </Pressable>
+            </View>
         );
     };
 
@@ -276,9 +486,9 @@ export const CreditsScreen: React.FC = () => {
 
 
                 <FlatList
-                    data={filteredCredits}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderCreditItem}
+                    data={groupedCredits}
+                    keyExtractor={(item) => item.party}
+                    renderItem={renderGroupedParty}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
@@ -615,6 +825,175 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     datePickerCancelText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     datePickerSelectBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.lg, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md },
     datePickerSelectText: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
+
+    // Grouped Party Card Styles
+    groupCard: {
+        backgroundColor: colors.semantic.surface,
+        borderRadius: tokens.radius.lg,
+        marginBottom: tokens.spacing.sm,
+        padding: tokens.spacing.md,
+        ...tokens.shadow.card,
+    },
+    groupHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    groupHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    groupHeaderRight: {
+        alignItems: 'flex-end',
+    },
+    groupIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: tokens.spacing.sm,
+    },
+    neutralIcon: {
+        backgroundColor: colors.semantic.soft,
+    },
+    groupPartyName: {
+        fontSize: tokens.typography.sizes.md,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.semibold,
+    },
+    groupTransactionCount: {
+        fontSize: tokens.typography.sizes.xs,
+        color: colors.text.muted,
+        fontFamily: tokens.typography.fontFamily.regular,
+        marginTop: 2,
+    },
+    netBalanceBadge: {
+        paddingHorizontal: tokens.spacing.sm,
+        paddingVertical: tokens.spacing.xs,
+        borderRadius: tokens.radius.md,
+        alignItems: 'flex-end',
+    },
+    netPositive: {
+        backgroundColor: 'rgba(129, 178, 154, 0.15)',
+    },
+    netNegative: {
+        backgroundColor: 'rgba(236, 11, 67, 0.15)',
+    },
+    netBalanceText: {
+        fontSize: 10,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    netBalanceAmount: {
+        fontSize: tokens.typography.sizes.md,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    netPositiveText: {
+        color: colors.semantic.success,
+    },
+    netNegativeText: {
+        color: colors.brand.primary,
+    },
+    settledBadge: {
+        backgroundColor: colors.semantic.soft,
+        paddingHorizontal: tokens.spacing.sm,
+        paddingVertical: tokens.spacing.xs,
+        borderRadius: tokens.radius.md,
+    },
+    settledText: {
+        fontSize: tokens.typography.sizes.xs,
+        color: colors.text.muted,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    groupSummaryRow: {
+        flexDirection: 'row',
+        gap: tokens.spacing.sm,
+        marginTop: tokens.spacing.sm,
+        marginLeft: 52, // Align with text after icon
+    },
+    summaryChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(129, 178, 154, 0.1)',
+        paddingHorizontal: tokens.spacing.xs,
+        paddingVertical: 4,
+        borderRadius: tokens.radius.sm,
+    },
+    summaryChipText: {
+        fontSize: 11,
+        color: colors.semantic.success,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    summaryChipTextTaken: {
+        fontSize: 11,
+        color: colors.brand.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    expandedCredits: {
+        marginTop: tokens.spacing.sm,
+        marginLeft: 52,
+        borderTopWidth: 1,
+        borderTopColor: colors.border.default,
+        paddingTop: tokens.spacing.sm,
+    },
+    expandButton: {
+        alignItems: 'center',
+        paddingTop: tokens.spacing.sm,
+        marginTop: tokens.spacing.xs,
+    },
+    expandButtonText: {
+        fontSize: tokens.typography.sizes.xs,
+        color: colors.brand.secondary,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+
+    // Sub-item styles for individual credits within a group
+    subListItem: {
+        paddingVertical: tokens.spacing.xs,
+        paddingHorizontal: tokens.spacing.xs,
+        marginBottom: tokens.spacing.xs,
+        backgroundColor: colors.semantic.background,
+        borderRadius: tokens.radius.sm,
+    },
+    subItemAmount: {
+        flex: 1,
+        fontSize: 13,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    subItemDue: {
+        fontSize: 12,
+        fontFamily: tokens.typography.fontFamily.semibold,
+    },
+    subItemSubtitle: {
+        fontSize: 10,
+        color: colors.text.muted,
+        fontFamily: tokens.typography.fontFamily.regular,
+        marginTop: 2,
+        marginLeft: 44,
+    },
+    subActionRow: {
+        flexDirection: 'row',
+        gap: tokens.spacing.xs,
+        marginTop: tokens.spacing.xs,
+        marginLeft: 44,
+    },
+    smallActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        paddingVertical: 4,
+        paddingHorizontal: tokens.spacing.xs,
+        backgroundColor: colors.semantic.soft,
+        borderRadius: tokens.radius.sm,
+    },
+    smallActionBtnText: {
+        fontSize: 10,
+        color: colors.semantic.success,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
 });
 
 export default CreditsScreen;

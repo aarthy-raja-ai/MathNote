@@ -12,24 +12,38 @@ import {
     KeyboardAvoidingView,
     Platform,
     TextInput,
+    ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet } from 'lucide-react-native';
+import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet, Boxes, Fuel, Phone, Heart, GraduationCap, Wrench, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Expense } from '../utils/storage';
 
-const CATEGORIES = [
-    { id: 'food', label: 'Food & Dining', Icon: Utensils },
-    { id: 'transport', label: 'Transport', Icon: Car },
-    { id: 'shopping', label: 'Shopping', Icon: ShoppingCart },
+// Business Categories
+const BUSINESS_CATEGORIES = [
+    { id: 'stock', label: 'Stock/Inventory', Icon: Boxes },
+    { id: 'salary', label: 'Salary', Icon: Briefcase },
     { id: 'utilities', label: 'Utilities', Icon: Lightbulb },
     { id: 'rent', label: 'Rent', Icon: Home },
-    { id: 'salary', label: 'Salary', Icon: Briefcase },
+    { id: 'maintenance', label: 'Maintenance', Icon: Wrench },
+];
+
+// Personal Categories  
+const PERSONAL_CATEGORIES = [
+    { id: 'food', label: 'Food & Dining', Icon: Utensils },
+    { id: 'transport', label: 'Transport', Icon: Car },
+    { id: 'fuel', label: 'Fuel', Icon: Fuel },
+    { id: 'shopping', label: 'Shopping', Icon: ShoppingCart },
+    { id: 'phone', label: 'Phone/Internet', Icon: Phone },
+    { id: 'health', label: 'Health', Icon: Heart },
+    { id: 'education', label: 'Education', Icon: GraduationCap },
     { id: 'other', label: 'Other', Icon: Package },
 ];
+
+const ALL_CATEGORIES = [...BUSINESS_CATEGORIES, ...PERSONAL_CATEGORIES];
 
 export const ExpensesScreen: React.FC = () => {
     const { expenses, addExpense, updateExpense, deleteExpense, settings } = useApp();
@@ -129,8 +143,25 @@ export const ExpensesScreen: React.FC = () => {
     const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     const getCategoryInfo = (catId: string) => {
-        return CATEGORIES.find((c) => c.id === catId) || CATEGORIES[CATEGORIES.length - 1];
+        return ALL_CATEGORIES.find((c) => c.id === catId) || ALL_CATEGORIES[ALL_CATEGORIES.length - 1];
     };
+
+    // Group expenses by category for summary
+    const categoryBreakdown = useMemo(() => {
+        const breakdown: { [key: string]: number } = {};
+        filteredExpenses.forEach((expense) => {
+            if (!breakdown[expense.category]) {
+                breakdown[expense.category] = 0;
+            }
+            breakdown[expense.category] += expense.amount;
+        });
+        return Object.entries(breakdown)
+            .map(([catId, amount]) => ({
+                ...getCategoryInfo(catId),
+                amount,
+            }))
+            .sort((a, b) => b.amount - a.amount);
+    }, [filteredExpenses]);
 
     const renderExpenseItem = ({ item }: { item: Expense }) => {
         const catInfo = getCategoryInfo(item.category);
@@ -254,32 +285,52 @@ export const ExpensesScreen: React.FC = () => {
                     <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
                     <View style={styles.bottomSheet}>
                         <View style={styles.handleContainer}><View style={styles.handleBar} /></View>
-                        <View style={styles.sheetContent}>
-                            <Text style={styles.modalTitle}>{editingExpense ? 'Edit Expense' : 'Add Expense'}</Text>
-                            <Text style={styles.categoryLabel}>Category</Text>
-                            <View style={styles.categoryGrid}>
-                                {CATEGORIES.map((cat) => (
-                                    <TouchableOpacity
-                                        key={cat.id}
-                                        style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
-                                        onPress={() => setCategory(cat.id)}
-                                    >
-                                        <cat.Icon size={20} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
-                                        <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]}>{cat.label}</Text>
-                                    </TouchableOpacity>
-                                ))}
+                        <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
+                            <View style={styles.sheetContent}>
+                                <Text style={styles.modalTitle}>{editingExpense ? 'Edit Expense' : 'Add Expense'}</Text>
+
+                                {/* Business Categories */}
+                                <Text style={styles.categoryGroupLabel}>📦 Business</Text>
+                                <View style={styles.categoryGrid}>
+                                    {BUSINESS_CATEGORIES.map((cat) => (
+                                        <TouchableOpacity
+                                            key={cat.id}
+                                            style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
+                                            onPress={() => setCategory(cat.id)}
+                                        >
+                                            <cat.Icon size={18} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
+                                            <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]} numberOfLines={1}>{cat.label}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                {/* Personal Categories */}
+                                <Text style={styles.categoryGroupLabel}>🏠 Personal</Text>
+                                <View style={styles.categoryGrid}>
+                                    {PERSONAL_CATEGORIES.map((cat) => (
+                                        <TouchableOpacity
+                                            key={cat.id}
+                                            style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
+                                            onPress={() => setCategory(cat.id)}
+                                        >
+                                            <cat.Icon size={18} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
+                                            <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]} numberOfLines={1}>{cat.label}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
+                                <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
+                                <View style={styles.modalButtons}>
+                                    <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
+                                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                                    </Pressable>
+                                    <Pressable style={[styles.modalBtn, styles.saveBtn]} onPress={handleSave}>
+                                        <Text style={styles.saveBtnText}>Save</Text>
+                                    </Pressable>
+                                </View>
                             </View>
-                            <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
-                            <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
-                            <View style={styles.modalButtons}>
-                                <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
-                                    <Text style={styles.cancelBtnText}>Cancel</Text>
-                                </Pressable>
-                                <Pressable style={[styles.modalBtn, styles.saveBtn]} onPress={handleSave}>
-                                    <Text style={styles.saveBtnText}>Save</Text>
-                                </Pressable>
-                            </View>
-                        </View>
+                        </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
