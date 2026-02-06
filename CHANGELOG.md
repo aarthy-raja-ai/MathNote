@@ -2,6 +2,29 @@
 
 All notable changes to Math Note are documented in this file.
 
+## [1.7.0] - 2026-02-06
+
+### ✨ New Features
+
+#### Modern Floating Navigation 🧭
+- **Floating Pill Design**: Replaced the standard bottom bar with a sleek, floating navigation pill with rounded corners.
+- **Smart Active States**: Active tabs now feature a horizontal pill indicator containing both the icon and label.
+- **Labels Everywhere**: Icons now have labels both in active (side-by-side) and inactive (below) states for better clarity.
+
+#### Redesigned Empty States 📊
+- **Sales Screen**: Replaced the old emoji with a modern themed `TrendingUp` vector icon.
+- **Visual Polish**: Added a soft background circular container to empty state icons for a more premium feel.
+
+### 🎨 Design Changes
+- **Dashboard Cleanup**: Removed "Credits" and "Returns" from Quick Actions to focus on core entries.
+- **Branding Sync**: Updated splash screen and adaptive icon backgrounds in `app.json` to match the Slate 50 (#F8FAFC) theme.
+
+### 🐛 Bug Fixes
+- **Credits Screen**: Fixed a critical "Cannot read property 'filter' of undefined" error caused by variable hoisting.
+- **Navbar Layout**: Fixed an issue where hidden tabs would interfere with the even distribution of visible tabs.
+
+---
+
 ## [1.6.0] - 2026-01-21
 
 ### ✨ New Features

@@ -15,29 +15,26 @@ import {
     Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake, MessageCircle } from 'lucide-react-native';
-import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake, MessageCircle, Search, X } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Credit, CreditPayment } from '../utils/storage';
 
 export const CreditsScreen: React.FC = () => {
-    const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment } = useApp();
+    const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment, contacts } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
     const [historyModalVisible, setHistoryModalVisible] = useState(false);
-    const [datePickerVisible, setDatePickerVisible] = useState(false);
     const [selectedCredit, setSelectedCredit] = useState<Credit | null>(null);
     const [editingCredit, setEditingCredit] = useState<Credit | null>(null);
     const [amount, setAmount] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [party, setParty] = useState('');
     const [type, setType] = useState<'given' | 'taken'>('given');
-    const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
-    const [selectedDate, setSelectedDate] = useState<string | null>(null);
-    const [dateInputValue, setDateInputValue] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const [paymentPaymentMode, setPaymentPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -154,40 +151,21 @@ export const CreditsScreen: React.FC = () => {
         });
     };
 
-    // Date filter handlers
-    const handleDateFilterChange = (filter: DateFilterType) => {
-        setDateFilter(filter);
-        setSelectedDate(null);
-    };
+    // WhatsApp handler
 
-    const handleCalendarPress = () => {
-        setDateInputValue(selectedDate || today);
-        setDatePickerVisible(true);
-    };
+    // Filter credits by search query
+    const filteredCredits = useMemo(() => {
+        return credits
+            .filter(c => {
+                const matchesSearch = c.party.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    c.amount.toString().includes(searchQuery);
+                return matchesSearch;
+            })
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [credits, searchQuery]);
 
-    const handleDateSelect = () => {
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (dateRegex.test(dateInputValue)) {
-            setSelectedDate(dateInputValue);
-            setDatePickerVisible(false);
-        } else {
-            Alert.alert('Invalid Date', 'Please enter date in YYYY-MM-DD format');
-        }
-    };
-
-    const clearSelectedDate = () => {
-        setSelectedDate(null);
-        setDatePickerVisible(false);
-    };
-
-    // Filter credits by date range (no type filter since tabs are removed)
-    const dateFilteredCredits = filterByDateRange(credits, dateFilter, selectedDate);
-    const filteredCredits = dateFilteredCredits
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    // Calculate pending amounts from filtered credits
-    const pendingGiven = filteredCredits.filter((c) => c.type === 'given' && c.status === 'pending').reduce((sum, c) => sum + c.amount - (c.paidAmount || 0), 0);
-    const pendingTaken = filteredCredits.filter((c) => c.type === 'taken' && c.status === 'pending').reduce((sum, c) => sum + c.amount - (c.paidAmount || 0), 0);
+    // Calculate pending amounts from grouped credits net balances
+    // Note: pendingGiven and pendingTaken are moved after groupedCredits definition
 
     // Group credits by party name
     interface GroupedParty {
@@ -250,6 +228,10 @@ export const CreditsScreen: React.FC = () => {
             new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime()
         );
     }, [filteredCredits]);
+
+    // Calculate pending amounts from grouped credits net balances
+    const pendingGiven = useMemo(() => groupedCredits.filter(g => g.netBalance > 0).reduce((sum, g) => sum + g.netBalance, 0), [groupedCredits]);
+    const pendingTaken = useMemo(() => groupedCredits.filter(g => g.netBalance < 0).reduce((sum, g) => sum + Math.abs(g.netBalance), 0), [groupedCredits]);
 
     // Get linked sale for a credit
     const getLinkedSale = (credit: Credit) => {
@@ -466,22 +448,30 @@ export const CreditsScreen: React.FC = () => {
 
                 <View style={styles.summaryRow}>
                     <Card style={styles.givenCard}>
-                        <Text style={styles.summaryLabel}>{getFilterLabel(dateFilter, selectedDate)} To Receive</Text>
-                        <Text style={styles.summaryAmount}>{currency} {pendingGiven.toLocaleString()}</Text>
+                        <Text style={styles.summaryLabelLight}>Total To Receive</Text>
+                        <Text style={styles.summaryAmountLight}>{currency} {pendingGiven.toLocaleString()}</Text>
                     </Card>
                     <Card style={styles.takenCard}>
-                        <Text style={styles.summaryLabelLight}>{getFilterLabel(dateFilter, selectedDate)} To Pay</Text>
+                        <Text style={styles.summaryLabelLight}>Total To Pay</Text>
                         <Text style={styles.summaryAmountLight}>{currency} {pendingTaken.toLocaleString()}</Text>
                     </Card>
                 </View>
 
-                <DateFilter
-                    selected={dateFilter}
-                    onFilterChange={handleDateFilterChange}
-                    onCalendarPress={handleCalendarPress}
-                    selectedDate={selectedDate}
-                    colors={colors}
-                />
+                <View style={[styles.searchContainer, { backgroundColor: colors.semantic.soft }]}>
+                    <Search size={20} color={colors.text.muted} strokeWidth={2} />
+                    <TextInput
+                        style={[styles.searchInput, { color: colors.text.primary }]}
+                        placeholder="Search by party name or amount..."
+                        placeholderTextColor={colors.text.muted}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                    />
+                    {searchQuery ? (
+                        <Pressable onPress={() => setSearchQuery('')}>
+                            <X size={20} color={colors.text.muted} strokeWidth={2} />
+                        </Pressable>
+                    ) : null}
+                </View>
 
 
 
@@ -496,7 +486,7 @@ export const CreditsScreen: React.FC = () => {
                             <Handshake size={48} color={colors.text.muted} strokeWidth={1.5} />
                             <Text style={styles.emptyText}>No credits found</Text>
                             <Text style={styles.emptySubtext}>
-                                {dateFilter === 'today' ? 'Add credits given or taken' : 'Try a different date range'}
+                                {searchQuery ? 'Try a different search term' : 'Add credits given or taken to get started'}
                             </Text>
                         </View>
                     }
@@ -506,37 +496,6 @@ export const CreditsScreen: React.FC = () => {
             <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
                 <Text style={styles.floatingButtonText}>+ Add Credit</Text>
             </Pressable>
-
-            {/* Date Picker Modal */}
-            <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
-                <View style={styles.datePickerOverlay}>
-                    <View style={styles.datePickerCard}>
-                        <Text style={styles.datePickerTitle}>Select Date</Text>
-                        <Text style={styles.datePickerHint}>Enter date in YYYY-MM-DD format</Text>
-                        <TextInput
-                            style={styles.datePickerInput}
-                            value={dateInputValue}
-                            onChangeText={setDateInputValue}
-                            placeholder="2024-01-15"
-                            placeholderTextColor={colors.text.muted}
-                            keyboardType="numbers-and-punctuation"
-                        />
-                        <View style={styles.datePickerButtons}>
-                            <Pressable style={styles.datePickerClearBtn} onPress={clearSelectedDate}>
-                                <Text style={styles.datePickerClearText}>Clear</Text>
-                            </Pressable>
-                            <View style={styles.datePickerActions}>
-                                <Pressable style={styles.datePickerCancelBtn} onPress={() => setDatePickerVisible(false)}>
-                                    <Text style={styles.datePickerCancelText}>Cancel</Text>
-                                </Pressable>
-                                <Pressable style={styles.datePickerSelectBtn} onPress={handleDateSelect}>
-                                    <Text style={styles.datePickerSelectText}>Select</Text>
-                                </Pressable>
-                            </View>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
 
             <Modal visible={modalVisible} animationType="slide" transparent={true}>
                 <KeyboardAvoidingView
@@ -558,6 +517,15 @@ export const CreditsScreen: React.FC = () => {
                                     <Text style={[styles.typeLabel, type === 'taken' && styles.typeLabelSelected]}>Taken</Text>
                                 </Pressable>
                             </View>
+
+                            <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Select {type === 'given' ? 'Customer' : 'Vendor'}</Text>
+                            <ContactPicker
+                                contacts={contacts}
+                                colors={colors}
+                                filterType={type === 'given' ? 'Customer' : 'Vendor'}
+                                onSelect={(contact) => setParty(contact.name)}
+                            />
+
                             <Input label={type === 'given' ? 'Customer Name' : 'Vendor Name'} placeholder="Enter name" value={party} onChangeText={setParty} />
                             <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
                             <Text style={styles.paymentModeLabel}>Payment Mode</Text>
@@ -663,7 +631,7 @@ export const CreditsScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </SafeAreaView >
     );
 };
 
@@ -680,21 +648,30 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     summaryLabelLight: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.regular },
     summaryAmount: { fontSize: tokens.typography.sizes.xl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     summaryAmountLight: { fontSize: tokens.typography.sizes.xl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: tokens.spacing.md,
+        height: 52,
+        borderRadius: tokens.radius.md,
+        marginBottom: tokens.spacing.md,
+        borderWidth: 1,
+        borderColor: colors.border.default,
+    },
+    searchInput: {
+        flex: 1,
+        marginLeft: tokens.spacing.sm,
+        fontSize: 16,
+        fontFamily: tokens.typography.fontFamily.regular,
+        height: '100%',
+    },
     filterTabs: { marginBottom: tokens.spacing.md },
-    filterRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.sm },
-    tabsContainer: { flex: 1, flexDirection: 'row', backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.pill, padding: tokens.spacing.xxs, overflow: 'hidden' },
-    filterTab: { flex: 1, paddingVertical: tokens.spacing.xs, alignItems: 'center', borderRadius: tokens.radius.pill },
-    filterActive: { backgroundColor: colors.brand.primary },
-    filterText: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.medium },
-    filterTextActive: { color: colors.text.inverse },
-    dateFilterBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.semantic.soft, justifyContent: 'center', alignItems: 'center' },
-    dateFilterActive: { backgroundColor: colors.brand.primary },
     creditCard: { marginBottom: tokens.spacing.sm, backgroundColor: colors.semantic.surface },
     paidCard: { opacity: 0.8 },
     creditRow: { flexDirection: 'row', alignItems: 'center' },
     typeIcon: { width: 36, height: 36, borderRadius: tokens.radius.md, justifyContent: 'center', alignItems: 'center', marginRight: tokens.spacing.sm },
-    givenIcon: { backgroundColor: 'rgba(129, 178, 154, 0.15)' },
-    takenIcon: { backgroundColor: 'rgba(236, 11, 67, 0.15)' },
+    givenIcon: { backgroundColor: 'rgba(16, 185, 129, 0.15)' },
+    takenIcon: { backgroundColor: 'rgba(99, 102, 241, 0.15)' },
     // Compact list item styles (matching Sales screen)
     listItem: {
         paddingVertical: 10,
@@ -782,6 +759,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     handleBar: { width: 40, height: 4, backgroundColor: colors.border.default, borderRadius: 2 },
     sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
     modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.sm, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
+    sectionLabel: { fontSize: 10, fontFamily: tokens.typography.fontFamily.medium, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: tokens.spacing.md },
     typeSelector: { flexDirection: 'row', marginBottom: tokens.spacing.md, gap: tokens.spacing.sm },
     typeOption: { flex: 1, padding: tokens.spacing.md, borderRadius: tokens.radius.md, backgroundColor: colors.semantic.soft, alignItems: 'center' },
     typeSelected: { backgroundColor: colors.semantic.success },
@@ -876,10 +854,10 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         alignItems: 'flex-end',
     },
     netPositive: {
-        backgroundColor: 'rgba(129, 178, 154, 0.15)',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
     },
     netNegative: {
-        backgroundColor: 'rgba(236, 11, 67, 0.15)',
+        backgroundColor: 'rgba(99, 102, 241, 0.15)',
     },
     netBalanceText: {
         fontSize: 10,

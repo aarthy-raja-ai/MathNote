@@ -17,12 +17,12 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Pencil, Trash2, Share2, FileText } from 'lucide-react-native';
-import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
+import { Pencil, Trash2, Share2, FileText, RotateCcw, TrendingUp } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
-import { Sale } from '../utils/storage';
+import { Sale, Product, SaleItem } from '../utils/storage';
 import { generateInvoicePDF } from '../utils/invoiceGenerator';
 import { evaluateMath } from '../utils/mathEvaluator';
 
@@ -68,7 +68,7 @@ const segmentStyles = StyleSheet.create({
 });
 
 export const SalesScreen: React.FC = () => {
-    const { sales, addSale, updateSale, deleteSale, settings } = useApp();
+    const { sales, addSale, updateSale, deleteSale, addReturn, settings, contacts, products, returns } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -80,6 +80,7 @@ export const SalesScreen: React.FC = () => {
     const [paidAmount, setPaidAmount] = useState('');
     const [note, setNote] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+    const [selectedItems, setSelectedItems] = useState<SaleItem[]>([]);
 
     // Date filter state
     const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
@@ -133,6 +134,7 @@ export const SalesScreen: React.FC = () => {
         setPaidAmount('');
         setNote('');
         setPaymentMethod('Cash');
+        setSelectedItems([]);
         setModalVisible(true);
     };
 
@@ -146,7 +148,42 @@ export const SalesScreen: React.FC = () => {
         setPaidAmount(paid.toString());
         setNote(sale.note || '');
         setPaymentMethod(sale.paymentMethod || 'Cash');
+        setSelectedItems(sale.items || []);
         setModalVisible(true);
+    };
+
+    const handleProductSelect = (product: Product) => {
+        const existingIndex = selectedItems.findIndex(item => item.productId === product.id);
+        if (existingIndex > -1) {
+            const newItems = selectedItems.filter(item => item.productId !== product.id);
+            setSelectedItems(newItems);
+            const newTotal = newItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+            setTotalAmount(newTotal > 0 ? newTotal.toString() : '');
+        } else {
+            const newItem: SaleItem = {
+                productId: product.id,
+                productName: product.name,
+                quantity: 1,
+                unitPrice: product.unitPrice,
+                costPrice: product.costPrice,
+            };
+            const newItems = [...selectedItems, newItem];
+            setSelectedItems(newItems);
+            const newTotal = newItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+            setTotalAmount(newTotal.toString());
+        }
+    };
+
+    const updateItemQuantity = (productId: string, delta: number) => {
+        const newItems = selectedItems.map(item => {
+            if (item.productId === productId) {
+                return { ...item, quantity: Math.max(1, item.quantity + delta) };
+            }
+            return item;
+        });
+        setSelectedItems(newItems);
+        const newTotal = newItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+        setTotalAmount(newTotal.toString());
     };
 
     const handleDelete = (id: string) => {
@@ -154,6 +191,35 @@ export const SalesScreen: React.FC = () => {
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => deleteSale(id) },
         ]);
+    };
+
+    const handleReturn = (sale: Sale) => {
+        const { total, paid } = getSaleAmount(sale);
+
+        // Check if already returned
+        const isReturned = returns.some(r => r.saleId === sale.id);
+        if (isReturned) {
+            Alert.alert('Already Returned', 'This sale has already been returned.');
+            return;
+        }
+
+        Alert.alert(
+            'Return Sale',
+            `Are you sure you want to return this sale? Total amount: ${currency}${total.toLocaleString()}\n\nThis will restore product stock and update balance.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Return Sale',
+                    style: 'destructive',
+                    onPress: () => addReturn({
+                        saleId: sale.id,
+                        date: today,
+                        amount: paid, // Money refunded (deducted from balance)
+                        note: `Return of sale (${currency}${total} total) to ${sale.customerName || 'Walk-in'} on ${sale.date}`,
+                    })
+                },
+            ]
+        );
     };
 
     const handleSave = async () => {
@@ -186,7 +252,8 @@ export const SalesScreen: React.FC = () => {
                 totalAmount: parsedTotal,
                 paidAmount: parsedPaid,
                 note,
-                paymentMethod
+                paymentMethod,
+                items: selectedItems,
             });
         } else {
             await addSale({
@@ -195,7 +262,8 @@ export const SalesScreen: React.FC = () => {
                 totalAmount: parsedTotal,
                 paidAmount: parsedPaid,
                 note,
-                paymentMethod
+                paymentMethod,
+                items: selectedItems,
             });
         }
         closeModal();
@@ -280,6 +348,12 @@ export const SalesScreen: React.FC = () => {
                         >
                             <Share2 size={18} color={colors.brand.primary} />
                         </Pressable>
+                        <Pressable
+                            onPress={() => handleReturn(item)}
+                            style={styles.shareButton}
+                        >
+                            <RotateCcw size={18} color={colors.semantic.error} />
+                        </Pressable>
                     </View>
                 </View>
 
@@ -322,7 +396,9 @@ export const SalesScreen: React.FC = () => {
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyIcon}>📊</Text>
+                            <View style={styles.emptyIconContainer}>
+                                <TrendingUp size={48} color={colors.brand.primary} strokeWidth={1.5} />
+                            </View>
                             <Text style={styles.emptyText}>No sales found</Text>
                             <Text style={styles.emptySubtext}>
                                 {dateFilter === 'today' ? 'Tap the button below to add your first sale' : 'Try a different date range'}
@@ -378,12 +454,56 @@ export const SalesScreen: React.FC = () => {
                             <View style={styles.sheetContent}>
                                 <Text style={styles.modalTitle}>{editingSale ? 'Edit Sale' : 'Add Sale'}</Text>
 
+                                <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Select Customer</Text>
+                                <ContactPicker
+                                    contacts={contacts}
+                                    colors={colors}
+                                    filterType="Customer"
+                                    onSelect={(contact) => setCustomerName(contact.name)}
+                                />
+
                                 <Input
                                     label="Customer Name"
                                     placeholder="Enter customer name (optional)"
                                     value={customerName}
                                     onChangeText={setCustomerName}
                                 />
+
+                                <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Inventory Items</Text>
+                                <ProductPicker
+                                    products={products}
+                                    colors={colors}
+                                    selectedProducts={selectedItems.map(i => i.productId)}
+                                    onSelect={handleProductSelect}
+                                />
+
+                                {selectedItems.length > 0 && (
+                                    <View style={styles.selectedItemsList}>
+                                        {selectedItems.map((item) => (
+                                            <View key={item.productId} style={[styles.selectedItemRow, { backgroundColor: colors.semantic.soft }]}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.selectedItemName, { color: colors.text.primary }]}>{item.productName}</Text>
+                                                    <Text style={[styles.selectedItemPrice, { color: colors.text.muted }]}>
+                                                        {currency}{item.unitPrice} x {item.quantity} = {currency}{(item.unitPrice * item.quantity).toLocaleString()}
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.quantityControls}>
+                                                    <TouchableOpacity onPress={() => updateItemQuantity(item.productId, -1)}>
+                                                        <View style={[styles.qtyBtn, { backgroundColor: colors.border.default }]}>
+                                                            <Text style={{ fontWeight: 'bold' }}>-</Text>
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                    <Text style={[styles.qtyValue, { color: colors.text.primary }]}>{item.quantity}</Text>
+                                                    <TouchableOpacity onPress={() => updateItemQuantity(item.productId, 1)}>
+                                                        <View style={[styles.qtyBtn, { backgroundColor: colors.border.default }]}>
+                                                            <Text style={{ fontWeight: 'bold' }}>+</Text>
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
                                 <Input
                                     label="Total Amount"
                                     placeholder="Enter total amount"
@@ -485,7 +605,15 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     },
 
     emptyContainer: { alignItems: 'center', paddingVertical: tokens.spacing.xxl },
-    emptyIcon: { fontSize: 48, marginBottom: tokens.spacing.md },
+    emptyIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: colors.semantic.soft,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: tokens.spacing.md
+    },
     emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     emptySubtext: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, marginTop: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.regular },
 
@@ -501,6 +629,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     sheetScroll: { maxHeight: SCREEN_HEIGHT * 0.75 },
     sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
     modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.md, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
+    sectionLabel: { fontSize: 12, fontFamily: tokens.typography.fontFamily.medium, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
     partialNote: { backgroundColor: colors.semantic.soft, padding: tokens.spacing.sm, borderRadius: tokens.radius.md, marginBottom: tokens.spacing.md },
     partialNoteText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.regular },
     modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: tokens.spacing.lg, gap: 12 },
@@ -523,6 +652,20 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     datePickerCancelText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     datePickerSelectBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.lg, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md },
     datePickerSelectText: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
+    // Multi-item styles
+    selectedItemsList: { marginBottom: tokens.spacing.md },
+    selectedItemRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 8
+    },
+    selectedItemName: { fontSize: 13, fontFamily: tokens.typography.fontFamily.bold },
+    selectedItemPrice: { fontSize: 11, fontFamily: tokens.typography.fontFamily.regular, marginTop: 2 },
+    quantityControls: { flexDirection: 'row', alignItems: 'center' },
+    qtyBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    qtyValue: { width: 30, textAlign: 'center', fontSize: 14, fontFamily: tokens.typography.fontFamily.bold },
 });
 
 export default SalesScreen;

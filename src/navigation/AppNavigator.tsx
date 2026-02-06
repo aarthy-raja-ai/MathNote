@@ -1,14 +1,13 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, StyleSheet, Platform } from 'react-native';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { View, StyleSheet, Platform, Text, TouchableOpacity } from 'react-native';
 import {
     LayoutDashboard,
     TrendingUp,
     Wallet,
     CreditCard,
-    BarChart3,
-    Settings2,
+    Package,
 } from 'lucide-react-native';
 import {
     DashboardScreen,
@@ -17,111 +16,197 @@ import {
     CreditsScreen,
     ReportsScreen,
     SettingsScreen,
+    ContactsScreen,
+    InventoryScreen,
+    ReturnsScreen,
 } from '../screens';
 import { tokens, useTheme } from '../theme';
 
 const Tab = createBottomTabNavigator();
 
-interface TabIconProps {
-    focused: boolean;
-    IconComponent: React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
-    colors: typeof tokens.colors;
-}
-
-const TabIcon: React.FC<TabIconProps> = ({ focused, IconComponent, colors }) => (
-    <View style={[
-        iconStyles.iconWrapper,
-        focused && { backgroundColor: colors.icon.activeBackground }
-    ]}>
-        <IconComponent
-            size={24}
-            color={focused ? colors.icon.active : colors.icon.inactive}
-            strokeWidth={focused ? 2.5 : 2}
-        />
-    </View>
-);
-
-const iconStyles = StyleSheet.create({
-    iconWrapper: {
-        width: 44,
-        height: 32,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderRadius: 14,
-        paddingHorizontal: 6,
-    },
-});
-
-const tabScreens = [
-    { name: 'Dashboard', component: DashboardScreen, icon: LayoutDashboard, label: 'Home' },
-    { name: 'Sales', component: SalesScreen, icon: TrendingUp, label: 'Sales' },
-    { name: 'Expenses', component: ExpensesScreen, icon: Wallet, label: 'Expenses' },
-    { name: 'Credits', component: CreditsScreen, icon: CreditCard, label: 'Credits' },
-    { name: 'Reports', component: ReportsScreen, icon: BarChart3, label: 'Reports' },
-    { name: 'Settings', component: SettingsScreen, icon: Settings2, label: 'Settings' },
+const tabConfig = [
+    { name: 'Dashboard', icon: LayoutDashboard, label: 'Home' },
+    { name: 'Sales', icon: TrendingUp, label: 'Sales' },
+    { name: 'Expenses', icon: Wallet, label: 'Spend' },
+    { name: 'Inventory', icon: Package, label: 'Stock' },
+    { name: 'Credits', icon: CreditCard, label: 'Credits' },
 ];
 
-export const AppNavigator: React.FC = () => {
+const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
     const { colors, isDark } = useTheme();
 
-    const tabBarStyle = useMemo(() => ({
-        backgroundColor: colors.semantic.surface,
-        borderTopWidth: 0,
-        height: 72,
-        paddingBottom: 12,
-        paddingTop: 12,
-        borderTopLeftRadius: tokens.radius.xxl,
-        borderTopRightRadius: tokens.radius.xxl,
-        position: 'absolute' as const,
+    // Only render the 5 visible tabs from tabConfig
+    const visibleRoutes = state.routes.filter(route =>
+        tabConfig.some(config => config.name === route.name)
+    );
+
+    return (
+        <View style={[
+            styles.tabBarContainer,
+            {
+                backgroundColor: isDark ? colors.brand.secondary : colors.semantic.surface,
+                borderColor: colors.border.default,
+            }
+        ]}>
+            {visibleRoutes.map((route) => {
+                const config = tabConfig.find(t => t.name === route.name);
+                if (!config) return null;
+
+                const routeIndex = state.routes.findIndex(r => r.key === route.key);
+                const isFocused = state.index === routeIndex;
+                const IconComponent = config.icon;
+
+                const onPress = () => {
+                    const event = navigation.emit({
+                        type: 'tabPress',
+                        target: route.key,
+                        canPreventDefault: true,
+                    });
+
+                    if (!isFocused && !event.defaultPrevented) {
+                        navigation.navigate(route.name);
+                    }
+                };
+
+                return (
+                    <TouchableOpacity
+                        key={route.key}
+                        activeOpacity={0.7}
+                        onPress={onPress}
+                        style={styles.tabItem}
+                    >
+                        {isFocused ? (
+                            <View style={[
+                                styles.activeContainer,
+                                { backgroundColor: colors.brand.primary }
+                            ]}>
+                                <IconComponent
+                                    size={24}
+                                    color="#FFFFFF"
+                                    strokeWidth={2.5}
+                                />
+                                <Text style={[
+                                    styles.activeLabel,
+                                    { fontFamily: tokens.typography.fontFamily.semibold }
+                                ]}>
+                                    {config.label}
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.inactiveContainer}>
+                                <IconComponent
+                                    size={26}
+                                    color={colors.icon.inactive}
+                                    strokeWidth={2}
+                                />
+                                <Text style={[
+                                    styles.inactiveLabel,
+                                    {
+                                        color: colors.icon.inactive,
+                                        fontFamily: tokens.typography.fontFamily.medium
+                                    }
+                                ]}>
+                                    {config.label}
+                                </Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                );
+            })}
+        </View>
+    );
+};
+
+const styles = StyleSheet.create({
+    tabBarContainer: {
+        position: 'absolute',
+        bottom: Platform.OS === 'ios' ? 28 : 16,
         left: 16,
         right: 16,
-        bottom: 12,
-        borderRadius: tokens.radius.xl,
+        height: 64,
+        borderRadius: 32,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        paddingHorizontal: 8,
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOffset: { width: 0, height: -4 },
-                shadowOpacity: isDark ? 0.3 : 0.08,
-                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.15,
+                shadowRadius: 20,
             },
             android: {
-                elevation: 10,
+                elevation: 16,
             },
         }),
-    }), [colors, isDark]);
-
-    const tabLabelStyle = useMemo(() => ({
+    },
+    tabItem: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+    },
+    activeContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 24,
+        gap: 6,
+    },
+    inactiveContainer: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+    },
+    activeLabel: {
         fontSize: 11,
-        fontFamily: tokens.typography.fontFamily.semibold,
-        marginTop: 2,
-    }), []);
+        color: '#FFFFFF',
+    },
+    inactiveLabel: {
+        fontSize: 10,
+    },
+});
 
+export const AppNavigator: React.FC = () => {
     return (
         <NavigationContainer>
             <Tab.Navigator
                 initialRouteName="Dashboard"
+                tabBar={(props) => <CustomTabBar {...props} />}
                 screenOptions={{
                     headerShown: false,
-                    tabBarStyle: tabBarStyle,
-                    tabBarActiveTintColor: colors.icon.active,
-                    tabBarInactiveTintColor: colors.icon.inactive,
-                    tabBarLabelStyle: tabLabelStyle,
-                    tabBarItemStyle: { minHeight: 44, paddingVertical: 4 },
                 }}
             >
-                {tabScreens.map((screen) => (
-                    <Tab.Screen
-                        key={screen.name}
-                        name={screen.name}
-                        component={screen.component}
-                        options={{
-                            tabBarLabel: screen.label,
-                            tabBarIcon: ({ focused }) => (
-                                <TabIcon focused={focused} IconComponent={screen.icon} colors={colors} />
-                            ),
-                        }}
-                    />
-                ))}
+                <Tab.Screen name="Dashboard" component={DashboardScreen} />
+                <Tab.Screen name="Sales" component={SalesScreen} />
+                <Tab.Screen name="Expenses" component={ExpensesScreen} />
+                <Tab.Screen name="Inventory" component={InventoryScreen} />
+                <Tab.Screen name="Credits" component={CreditsScreen} />
+                <Tab.Screen
+                    name="Reports"
+                    component={ReportsScreen}
+                    options={{ tabBarButton: () => null }}
+                />
+                <Tab.Screen
+                    name="Returns"
+                    component={ReturnsScreen}
+                    options={{ tabBarButton: () => null }}
+                />
+                <Tab.Screen
+                    name="Settings"
+                    component={SettingsScreen}
+                    options={{ tabBarButton: () => null }}
+                />
+                <Tab.Screen
+                    name="Contacts"
+                    component={ContactsScreen}
+                    options={{ tabBarButton: () => null }}
+                />
             </Tab.Navigator>
         </NavigationContainer>
     );
