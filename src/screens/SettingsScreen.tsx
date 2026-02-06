@@ -10,10 +10,11 @@ import {
     Alert,
     Linking,
     Pressable,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell } from 'lucide-react-native';
+import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell, Share2 } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
@@ -23,6 +24,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import storage from '../utils/storage';
+import googleDriveService from '../utils/googleDrive';
 
 const CURRENCIES = [
     { code: '₹', name: 'Indian Rupee' },
@@ -39,6 +41,8 @@ export const SettingsScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
     const [remindersEnabled, setRemindersEnabled] = useState(false);
+    const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+    const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -108,6 +112,65 @@ export const SettingsScreen: React.FC = () => {
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to create backup');
+        }
+    };
+
+    const handleCloudBackup = async () => {
+        // Mock token for demonstration - in a real app, this would come from expo-auth-session
+        const mockToken = "USER_ACCESS_TOKEN";
+
+        setIsCloudSyncing(true);
+        try {
+            const success = await googleDriveService.uploadBackup(mockToken);
+            if (success) {
+                const now = new Date().toLocaleString();
+                setLastCloudSync(now);
+                Alert.alert('Cloud Sync Success', `Data backed up to Google Drive at ${now}`);
+            } else {
+                Alert.alert('Cloud Sync Failed', 'Make sure you are signed in and have internet access.');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'An unexpected error occurred during cloud sync.');
+        } finally {
+            setIsCloudSyncing(false);
+        }
+    };
+
+    const handleCloudRestore = async () => {
+        const mockToken = "USER_ACCESS_TOKEN";
+
+        setIsCloudSyncing(true);
+        try {
+            const info = await googleDriveService.getBackupInfo(mockToken);
+            if (!info) {
+                Alert.alert('No Backup Found', 'No cloud backup was found for this account.');
+                return;
+            }
+
+            Alert.alert(
+                'Restore from Cloud',
+                `Found backup from ${new Date(info.modifiedTime).toLocaleString()}.\n\nThis will replace all local data. Continue?`,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Restore Now',
+                        style: 'destructive',
+                        onPress: async () => {
+                            const success = await googleDriveService.downloadAndRestore(mockToken);
+                            if (success) {
+                                Alert.alert('Success', 'Data restored from cloud successfully!');
+                                navigation.navigate('Dashboard');
+                            } else {
+                                Alert.alert('Error', 'Failed to restore data from cloud.');
+                            }
+                        }
+                    }
+                ]
+            );
+        } catch (error) {
+            Alert.alert('Error', 'Failed to connect to Google Drive.');
+        } finally {
+            setIsCloudSyncing(false);
         }
     };
 
@@ -301,16 +364,60 @@ export const SettingsScreen: React.FC = () => {
                         </View>
                     </Card>
 
-                    <Text style={styles.sectionTitle}>Data Management</Text>
+                    <Text style={styles.sectionTitle}>Cloud Storage</Text>
+                    <Card style={styles.settingCard}>
+                        <TouchableOpacity
+                            style={styles.settingRow}
+                            onPress={handleCloudBackup}
+                            disabled={isCloudSyncing}
+                        >
+                            <View style={styles.settingInfo}>
+                                <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
+                                    <CloudUpload size={20} color={colors.brand.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <View style={styles.row}>
+                                        <Text style={styles.settingLabel}>Backup to Drive</Text>
+                                        {isCloudSyncing && <ActivityIndicator size="small" color={colors.brand.primary} style={{ marginLeft: 10 }} />}
+                                    </View>
+                                    <Text style={styles.settingDescription}>
+                                        {lastCloudSync ? `Last synced: ${lastCloudSync}` : 'Export data to Google Drive'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
+                        </TouchableOpacity>
+                    </Card>
+
+                    <Card style={styles.settingCard}>
+                        <TouchableOpacity
+                            style={styles.settingRow}
+                            onPress={handleCloudRestore}
+                            disabled={isCloudSyncing}
+                        >
+                            <View style={styles.settingInfo}>
+                                <View style={[styles.iconWrapper, { backgroundColor: colors.semantic.success + '15' }]}>
+                                    <CloudDownload size={20} color={colors.semantic.success} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>Restore from Drive</Text>
+                                    <Text style={styles.settingDescription}>Import data from Google Drive</Text>
+                                </View>
+                            </View>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
+                        </TouchableOpacity>
+                    </Card>
+
+                    <Text style={styles.sectionTitle}>Local Data Management</Text>
                     <Card style={styles.settingCard}>
                         <TouchableOpacity style={styles.settingRow} onPress={handleBackup}>
                             <View style={styles.settingInfo}>
                                 <View style={styles.iconWrapper}>
-                                    <CloudUpload size={20} color={colors.text.primary} strokeWidth={2} />
+                                    <Share2 size={20} color={colors.text.primary} strokeWidth={2} />
                                 </View>
                                 <View>
-                                    <Text style={styles.settingLabel}>Backup Data</Text>
-                                    <Text style={styles.settingDescription}>Save data as JSON file</Text>
+                                    <Text style={styles.settingLabel}>Export JSON</Text>
+                                    <Text style={styles.settingDescription}>Share data file manually</Text>
                                 </View>
                             </View>
                             <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
@@ -408,6 +515,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     tagline: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, fontStyle: 'italic', marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
     version: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, marginTop: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.regular },
     bottomSpacer: { height: tokens.spacing.xl + 80 },
+    row: { flexDirection: 'row', alignItems: 'center' },
 });
 
 export default SettingsScreen;

@@ -4,28 +4,28 @@ import { Platform } from 'react-native';
 export const tokens = {
     colors: {
         brand: {
-            primary: '#EC0B43',
-            secondary: '#3D405B',
+            primary: '#6366F1', // Electric Indigo
+            secondary: '#0F172A', // Deep Slate
         },
         semantic: {
-            success: '#81B29A',
-            soft: '#F2CC8F',
-            background: '#FFF8EC',
+            success: '#10B981', // Emerald
+            soft: '#F1F5F9', // Slate 100
+            background: '#F8FAFC', // Slate 50
             surface: '#FFFFFF',
         },
         text: {
-            primary: '#2B2B2B',
-            secondary: 'rgba(43,43,43,0.75)',
+            primary: '#1E293B', // Slate 800
+            secondary: '#64748B', // Slate 500
             inverse: '#FFFFFF',
-            muted: '#6B6B6B',
+            muted: '#94A3B8', // Slate 400
         },
         border: {
-            default: 'rgba(61,64,91,0.2)',
+            default: '#E2E8F0', // Slate 200
         },
         icon: {
-            active: '#EC0B43',
-            inactive: '#6B6B6B',
-            activeBackground: 'rgba(236,11,67,0.12)',
+            active: '#6366F1',
+            inactive: '#94A3B8',
+            activeBackground: 'rgba(99,102,241,0.12)',
         },
     },
 
@@ -63,10 +63,10 @@ export const tokens = {
     },
 
     radius: {
-        sm: 6,
+        sm: 8,
         md: 12,
-        lg: 20,
-        xl: 22,
+        lg: 16,
+        xl: 20,
         xxl: 24,
         pill: 999,
     },

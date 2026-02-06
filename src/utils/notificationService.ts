@@ -29,14 +29,19 @@ export const notificationService = {
             return false;
         }
 
-        // Android needs a notification channel
-        if (Platform.OS === 'android') {
-            await Notifications.setNotificationChannelAsync('credit-reminders', {
-                name: 'Credit Reminders',
-                importance: Notifications.AndroidImportance.HIGH,
-                vibrationPattern: [0, 250, 250, 250],
-                lightColor: '#FF231F7C',
-            });
+        try {
+            // Android needs a notification channel
+            if (Platform.OS === 'android') {
+                await Notifications.setNotificationChannelAsync('credit-reminders', {
+                    name: 'Credit Reminders',
+                    importance: Notifications.AndroidImportance.HIGH,
+                    vibrationPattern: [0, 250, 250, 250],
+                    lightColor: '#FF231F7C',
+                });
+            }
+        } catch (error) {
+            console.warn('Failed to set notification channel:', error);
+            // Non-critical failure, continue
         }
 
         return true;
@@ -54,20 +59,25 @@ export const notificationService = {
         triggerDate.setDate(triggerDate.getDate() + 1);
         triggerDate.setHours(9, 0, 0, 0);
 
-        const notificationId = await Notifications.scheduleNotificationAsync({
-            content: {
-                title: '💰 Credit Reminder',
-                body: `${credit.party} owes you ₹${credit.amount.toLocaleString()}`,
-                data: { creditId: credit.id },
-                sound: true,
-            },
-            trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.DATE,
-                date: triggerDate,
-            },
-        });
+        try {
+            const notificationId = await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: '💰 Credit Reminder',
+                    body: `${credit.party} owes you ₹${credit.amount.toLocaleString()}`,
+                    data: { creditId: credit.id },
+                    sound: true,
+                },
+                trigger: {
+                    type: Notifications.SchedulableTriggerInputTypes.DATE,
+                    date: triggerDate,
+                },
+            });
 
-        return notificationId;
+            return notificationId;
+        } catch (error) {
+            console.warn('Failed to schedule credit reminder:', error);
+            return null;
+        }
     },
 
     // Cancel all scheduled notifications for a credit

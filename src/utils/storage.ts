@@ -5,6 +5,9 @@ const STORAGE_KEYS = {
     EXPENSES: '@mathnote_expenses',
     CREDITS: '@mathnote_credits',
     SETTINGS: '@mathnote_settings',
+    CONTACTS: '@mathnote_contacts',
+    PRODUCTS: '@mathnote_products',
+    RETURNS: '@mathnote_returns',
 };
 
 export const storage = {
@@ -65,19 +68,49 @@ export const storage = {
         return this.set(STORAGE_KEYS.SETTINGS, settings);
     },
 
+    // Contacts
+    async getContacts() {
+        return this.get<Contact[]>(STORAGE_KEYS.CONTACTS) || [];
+    },
+
+    async setContacts(contacts: Contact[]) {
+        return this.set(STORAGE_KEYS.CONTACTS, contacts);
+    },
+
+    // Products
+    async getProducts() {
+        return this.get<Product[]>(STORAGE_KEYS.PRODUCTS) || [];
+    },
+
+    async setProducts(products: Product[]) {
+        return this.set(STORAGE_KEYS.PRODUCTS, products);
+    },
+
+    // Returns
+    async getReturns() {
+        return this.get<SaleReturn[]>(STORAGE_KEYS.RETURNS) || [];
+    },
+
+    async setReturns(returns: SaleReturn[]) {
+        return this.set(STORAGE_KEYS.RETURNS, returns);
+    },
+
     // Backup
     async exportAllData() {
-        const [sales, expenses, credits, settings] = await Promise.all([
+        const [sales, expenses, credits, settings, contacts, products, returns] = await Promise.all([
             this.getSales(),
             this.getExpenses(),
             this.getCredits(),
             this.getSettings(),
+            this.getContacts(),
+            this.getProducts(),
+            this.getReturns(),
         ]);
-        return { sales, expenses, credits, settings, exportedAt: new Date().toISOString() };
+        return { sales, expenses, credits, settings, contacts, products, returns, exportedAt: new Date().toISOString() };
     },
 
     // Restore from backup
-    async importAllData(data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) {
+    async importAllData(data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings; contacts?: Contact[]; products?: Product[] }) {
         try {
             const operations: Promise<boolean>[] = [];
 
@@ -92,6 +125,15 @@ export const storage = {
             }
             if (data.settings) {
                 operations.push(this.setSettings(data.settings));
+            }
+            if (data.contacts && Array.isArray(data.contacts)) {
+                operations.push(this.setContacts(data.contacts));
+            }
+            if (data.products && Array.isArray(data.products)) {
+                operations.push(this.setProducts(data.products));
+            }
+            if (data.returns && Array.isArray(data.returns)) {
+                operations.push(this.setReturns(data.returns));
             }
 
             await Promise.all(operations);
@@ -115,6 +157,14 @@ export const storage = {
 };
 
 // Types
+export interface SaleItem {
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    costPrice?: number;
+}
+
 export interface Sale {
     id: string;
     date: string;
@@ -124,6 +174,7 @@ export interface Sale {
     paymentMethod: 'Cash' | 'UPI';
     note: string;
     linkedCreditId?: string;        // Reference to auto-created credit (if partial payment)
+    items?: SaleItem[];             // Linked inventory items
 }
 
 export interface Expense {
@@ -132,6 +183,8 @@ export interface Expense {
     category: string;
     amount: number;
     note: string;
+    vendorName?: string;
+    vendorId?: string;
 }
 
 export interface CreditPayment {
@@ -159,6 +212,36 @@ export interface Settings {
     theme: 'light' | 'dark';
     currency: string;
     lock: boolean;
+}
+
+export interface Contact {
+    id: string;
+    name: string;
+    phone?: string;
+    type: 'Customer' | 'Vendor' | 'Both';
+    notes?: string;
+    createdAt: string;
+}
+
+export interface Product {
+    id: string;
+    name: string;
+    stock: number;
+    unitPrice: number;
+    costPrice?: number;
+    category?: string;
+    minStockLevel?: number;
+    createdAt: string;
+}
+
+export interface SaleReturn {
+    id: string;
+    saleId: string;
+    date: string;
+    party: string;
+    amount: number;
+    note: string;
+    items?: SaleItem[];
 }
 
 export default storage;

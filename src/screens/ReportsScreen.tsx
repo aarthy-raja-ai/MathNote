@@ -16,7 +16,7 @@ import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import pdfService from '../utils/pdfService';
 
-type DateRange = 'daily' | 'weekly' | 'monthly' | 'all';
+type DateRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -45,6 +45,9 @@ export const ReportsScreen: React.FC = () => {
             case 'monthly':
                 const monthAgo = new Date(now); monthAgo.setMonth(monthAgo.getMonth() - 1);
                 return { start: monthAgo.toISOString().split('T')[0], end: today };
+            case 'yearly':
+                const yearAgo = new Date(now); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+                return { start: yearAgo.toISOString().split('T')[0], end: today };
             default: return { start: '', end: today };
         }
     };
@@ -66,26 +69,37 @@ export const ReportsScreen: React.FC = () => {
     const filteredExpenses = filterByRange(expenses);
     const filteredCredits = filterByRange(credits);
 
-    const totalSales = filteredSales.reduce((sum, s) => sum + getSaleAmount(s), 0);
+    const totalSales = filteredSales.reduce((sum, s) => sum + (s.totalAmount ?? s.paidAmount ?? 0), 0);
     const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
-    // Credit payments received (from given credits - money coming in)
-    const creditReceived = filteredCredits
-        .filter((c) => c.type === 'given')
-        .reduce((sum, c) => sum + (c.paidAmount || 0), 0);
+    // Calculate COGS (Cost of Goods Sold)
+    const totalCOGS = filteredSales.reduce((sum, s) => {
+        const saleItemsCOGS = (s.items || []).reduce((itemSum, item) => {
+            return itemSum + ((item.costPrice || 0) * item.quantity);
+        }, 0);
+        return sum + saleItemsCOGS;
+    }, 0);
 
-    // Credit payments made (for taken credits - money going out)
-    const creditPaid = filteredCredits
-        .filter((c) => c.type === 'taken')
-        .reduce((sum, c) => sum + (c.paidAmount || 0), 0);
+    const grossProfit = totalSales - totalCOGS;
+    const netProfit = grossProfit - totalExpenses;
+    const profitMargin = totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0';
 
-    // Total income = sales + credit received
-    const totalIncome = totalSales + creditReceived;
-    // Total outflow = expenses + credit paid
-    const totalOutflow = totalExpenses + creditPaid;
+    // Top Selling Products
+    const productStats = filteredSales.reduce((acc, s) => {
+        (s.items || []).forEach(item => {
+            if (!acc[item.productId]) {
+                acc[item.productId] = { name: item.productName, qty: 0, revenue: 0, profit: 0 };
+            }
+            acc[item.productId].qty += item.quantity;
+            acc[item.productId].revenue += (item.unitPrice * item.quantity);
+            acc[item.productId].profit += ((item.unitPrice - (item.costPrice || 0)) * item.quantity);
+        });
+        return acc;
+    }, {} as Record<string, { name: string; qty: number; revenue: number; profit: number }>);
 
-    const netProfit = totalIncome - totalOutflow;
-    const profitMargin = totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : '0';
+    const topProducts = Object.values(productStats)
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5);
 
     const expensesByCategory = filteredExpenses.reduce((acc, e) => {
         acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
@@ -99,6 +113,7 @@ export const ReportsScreen: React.FC = () => {
         utilities: { label: 'Utilities', icon: '💡', color: '#4BC0C0' },
         rent: { label: 'Rent', icon: '🏠', color: '#9966FF' },
         salary: { label: 'Salary', icon: '💼', color: '#FF9F40' },
+        inventory: { label: 'Inventory', icon: '📦', color: '#4BC0C0' },
         other: { label: 'Other', icon: '📦', color: '#C9CBCF' },
     };
 
@@ -116,10 +131,12 @@ export const ReportsScreen: React.FC = () => {
         };
     });
 
-    // Prepare sales trend data (last 7 days)
-    const getLast7DaysSales = () => {
+    // Prepare Financial Trends (last 7 days)
+    const getFinancialTrends = () => {
         const labels: string[] = [];
-        const data: number[] = [];
+        const salesData: number[] = [];
+        const expensesData: number[] = [];
+        const profitData: number[] = [];
         const now = new Date();
 
         for (let i = 6; i >= 0; i--) {
@@ -131,13 +148,28 @@ export const ReportsScreen: React.FC = () => {
 
             const daySales = sales
                 .filter(s => s.date === dateStr)
-                .reduce((sum, s) => sum + getSaleAmount(s), 0);
-            data.push(daySales);
+                .reduce((sum, s) => sum + (s.totalAmount ?? s.paidAmount ?? 0), 0);
+
+            const dayExpenses = expenses
+                .filter(e => e.date === dateStr)
+                .reduce((sum, e) => sum + (e.amount || 0), 0);
+
+            const dayCOGS = sales
+                .filter(s => s.date === dateStr)
+                .reduce((sum, s) => {
+                    return sum + (s.items || []).reduce((itemSum, item) => itemSum + ((item.costPrice || 0) * item.quantity), 0);
+                }, 0);
+
+            const dayProfit = daySales - dayCOGS - dayExpenses;
+
+            salesData.push(daySales);
+            expensesData.push(dayExpenses);
+            profitData.push(dayProfit);
         }
-        return { labels, data };
+        return { labels, salesData, expensesData, profitData };
     };
 
-    const salesTrendData = getLast7DaysSales();
+    const financialTrends = getFinancialTrends();
 
     const chartConfig = {
         backgroundGradientFrom: colors.semantic.surface,
@@ -189,7 +221,7 @@ export const ReportsScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.rangeSelector}>
-                    {(['daily', 'weekly', 'monthly', 'all'] as DateRange[]).map((r) => (
+                    {(['daily', 'weekly', 'monthly', 'yearly'] as DateRange[]).map((r) => (
                         <TouchableOpacity key={r} style={[styles.rangeTab, range === r && styles.rangeTabActive]} onPress={() => setRange(r)}>
                             <Text style={[styles.rangeText, range === r && styles.rangeTextActive]}>{r.charAt(0).toUpperCase() + r.slice(1)}</Text>
                         </TouchableOpacity>
@@ -201,29 +233,27 @@ export const ReportsScreen: React.FC = () => {
                         <Text style={styles.summaryLabel}>Total Sales</Text>
                         <Text style={styles.salesAmount}>{currency} {totalSales.toLocaleString()}</Text>
                     </Card>
+                    <Card style={styles.cogsSummary}>
+                        <Text style={styles.summaryLabelLight}>Total COGS</Text>
+                        <Text style={styles.expensesAmount}>{currency} {totalCOGS.toLocaleString()}</Text>
+                    </Card>
+                </View>
+
+                <View style={styles.summaryRow}>
+                    <Card style={styles.profitSummary}>
+                        <Text style={styles.summaryLabel}>Gross Profit</Text>
+                        <Text style={styles.salesAmount}>{currency} {grossProfit.toLocaleString()}</Text>
+                    </Card>
                     <Card style={styles.expensesSummary}>
-                        <Text style={styles.summaryLabelLight}>Total Expenses</Text>
+                        <Text style={styles.summaryLabelLight}>Op. Expenses</Text>
                         <Text style={styles.expensesAmount}>{currency} {totalExpenses.toLocaleString()}</Text>
                     </Card>
                 </View>
 
-                {(creditReceived > 0 || creditPaid > 0) && (
-                    <View style={styles.summaryRow}>
-                        <Card style={styles.creditReceivedCard}>
-                            <Text style={styles.summaryLabel}>Credit Received</Text>
-                            <Text style={styles.creditReceivedAmount}>{currency} {creditReceived.toLocaleString()}</Text>
-                        </Card>
-                        <Card style={styles.creditPaidCard}>
-                            <Text style={styles.summaryLabelLight}>Credit Paid</Text>
-                            <Text style={styles.creditPaidAmount}>{currency} {creditPaid.toLocaleString()}</Text>
-                        </Card>
-                    </View>
-                )}
-
                 <Card style={[styles.profitCard, netProfit >= 0 ? styles.profitPositive : styles.profitNegative]}>
                     <View style={styles.profitRow}>
                         <View>
-                            <Text style={styles.profitLabel}>Net Profit</Text>
+                            <Text style={styles.profitLabel}>Net Profit (Actual)</Text>
                             <Text style={styles.profitAmount}>{currency} {Math.abs(netProfit).toLocaleString()}{netProfit < 0 && ' (Loss)'}</Text>
                         </View>
                         <View style={styles.marginBadge}>
@@ -231,6 +261,26 @@ export const ReportsScreen: React.FC = () => {
                         </View>
                     </View>
                 </Card>
+
+                {topProducts.length > 0 && (
+                    <>
+                        <Text style={styles.sectionTitle}>Top Selling Products</Text>
+                        <Card style={styles.chartCard}>
+                            {topProducts.map((p, idx) => (
+                                <View key={idx} style={styles.topProductRow}>
+                                    <View style={styles.productInfo}>
+                                        <Text style={[styles.productName, { color: colors.text.primary }]}>{p.name}</Text>
+                                        <Text style={[styles.productMeta, { color: colors.text.muted }]}>{p.qty} units sold</Text>
+                                    </View>
+                                    <View style={styles.productStats}>
+                                        <Text style={[styles.productRevenue, { color: colors.brand.secondary }]}>{currency}{p.revenue.toLocaleString()}</Text>
+                                        <Text style={[styles.productProfit, { color: colors.semantic.success }]}>+{currency}{p.profit.toLocaleString()}</Text>
+                                    </View>
+                                </View>
+                            ))}
+                        </Card>
+                    </>
+                )}
 
                 <Text style={styles.sectionTitle}>Expense Breakdown</Text>
                 {pieChartData.length > 0 ? (
@@ -255,25 +305,40 @@ export const ReportsScreen: React.FC = () => {
                     </Card>
                 )}
 
-                <Text style={styles.sectionTitle}>Sales Trend (Last 7 Days)</Text>
+                <Text style={styles.sectionTitle}>Financial Trends (Last 7 Days)</Text>
                 <Card style={styles.chartCard}>
-                    {salesTrendData.data.some(d => d > 0) ? (
-                        <LineChart
-                            data={{
-                                labels: salesTrendData.labels,
-                                datasets: [{ data: salesTrendData.data.map(d => d || 0) }],
-                            }}
-                            width={SCREEN_WIDTH - tokens.spacing.md * 2 - 32}
-                            height={200}
-                            chartConfig={chartConfig}
-                            bezier
-                            style={{ marginVertical: 8, borderRadius: 16 }}
-                            fromZero
-                        />
+                    {financialTrends.salesData.some(d => d > 0) || financialTrends.expensesData.some(d => d > 0) ? (
+                        <>
+                            <LineChart
+                                data={{
+                                    labels: financialTrends.labels,
+                                    datasets: [
+                                        { data: financialTrends.salesData, color: () => '#4BC0C0', strokeWidth: 2 }, // Revenue
+                                        { data: financialTrends.expensesData, color: () => '#FF6384', strokeWidth: 2 }, // Expenses
+                                        { data: financialTrends.profitData, color: () => '#36A2EB', strokeWidth: 2 }, // Profit
+                                    ],
+                                    legend: ['Sales', 'Expenses', 'Profit']
+                                }}
+                                width={SCREEN_WIDTH - tokens.spacing.md * 2 - 32}
+                                height={220}
+                                chartConfig={{
+                                    ...chartConfig,
+                                    color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                                }}
+                                bezier
+                                style={{ marginVertical: 8, borderRadius: 16 }}
+                                fromZero
+                            />
+                            <View style={styles.legendContainer}>
+                                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#4BC0C0' }]} /><Text style={styles.legendText}>Sales</Text></View>
+                                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#FF6384' }]} /><Text style={styles.legendText}>Expenses</Text></View>
+                                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#36A2EB' }]} /><Text style={styles.legendText}>Profit</Text></View>
+                            </View>
+                        </>
                     ) : (
                         <View style={styles.emptyChart}>
                             <Text style={styles.emptyIcon}>📈</Text>
-                            <Text style={styles.emptyText}>No sales data yet</Text>
+                            <Text style={styles.emptyText}>Not enough data for trends</Text>
                         </View>
                     )}
                 </Card>
@@ -322,6 +387,8 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     summaryRow: { flexDirection: 'row', gap: tokens.spacing.sm, marginBottom: tokens.spacing.sm },
     salesSummary: { flex: 1, backgroundColor: colors.semantic.success },
     expensesSummary: { flex: 1, backgroundColor: colors.brand.primary },
+    cogsSummary: { flex: 1, backgroundColor: colors.text.muted },
+    profitSummary: { flex: 1, backgroundColor: 'rgba(129, 178, 154, 0.4)' },
     summaryLabel: { fontSize: tokens.typography.sizes.sm, color: colors.brand.secondary, marginBottom: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
     summaryLabelLight: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, marginBottom: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.regular },
     salesAmount: { fontSize: tokens.typography.sizes.xl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
@@ -339,7 +406,18 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     marginBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: tokens.spacing.md, paddingVertical: tokens.spacing.xs, borderRadius: tokens.radius.pill },
     marginText: { fontSize: tokens.typography.sizes.lg, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
     sectionTitle: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, marginBottom: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.semibold },
-    chartCard: { marginBottom: tokens.spacing.md, backgroundColor: colors.semantic.surface },
+    chartCard: { marginBottom: tokens.spacing.md, backgroundColor: colors.semantic.surface, padding: 16 },
+    topProductRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border.default },
+    productInfo: { flex: 1 },
+    productName: { fontSize: 14, fontFamily: tokens.typography.fontFamily.bold },
+    productMeta: { fontSize: 11, fontFamily: tokens.typography.fontFamily.regular, marginTop: 2 },
+    productStats: { alignItems: 'flex-end' },
+    productRevenue: { fontSize: 14, fontFamily: tokens.typography.fontFamily.bold },
+    productProfit: { fontSize: 11, fontFamily: tokens.typography.fontFamily.medium, marginTop: 2 },
+    legendContainer: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 8 },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    legendDot: { width: 8, height: 8, borderRadius: 4 },
+    legendText: { fontSize: 10, color: colors.text.secondary, fontFamily: tokens.typography.fontFamily.medium },
     emptyChart: { alignItems: 'center', paddingVertical: tokens.spacing.xl },
     emptyIcon: { fontSize: 40, marginBottom: tokens.spacing.sm },
     emptyText: { fontSize: tokens.typography.sizes.md, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },

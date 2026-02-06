@@ -12,28 +12,28 @@ const lightColors = tokens.colors;
 // Dark mode color overrides
 const darkColors = {
     brand: {
-        primary: '#EC0B43',
-        secondary: '#E8E8E8',
+        primary: '#818CF8', // Indigo 400
+        secondary: '#F8FAFC',
     },
     semantic: {
-        success: '#81B29A',
-        soft: '#2D3748',
-        background: '#1A1A2E',
-        surface: '#16213E',
+        success: '#10B981',
+        soft: '#1E293B',
+        background: '#0F172A',
+        surface: '#1E293B',
     },
     text: {
-        primary: '#FFFFFF',
-        secondary: 'rgba(255,255,255,0.75)',
-        inverse: '#1A1A2E',
-        muted: 'rgba(255,255,255,0.50)',
+        primary: '#F8FAFC',
+        secondary: '#94A3B8',
+        inverse: '#0F172A',
+        muted: '#64748B',
     },
     border: {
-        default: 'rgba(255,255,255,0.15)',
+        default: '#334155',
     },
     icon: {
-        active: '#EC0B43',
-        inactive: 'rgba(255,255,255,0.50)',
-        activeBackground: 'rgba(236,11,67,0.20)',
+        active: '#818CF8',
+        inactive: '#64748B',
+        activeBackground: 'rgba(129,140,248,0.20)',
     },
 };
 

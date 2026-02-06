@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import storage, { Sale, Expense, Credit, Settings, CreditPayment } from '../utils/storage';
+import storage, { Sale, Expense, Credit, Settings, CreditPayment, Contact, Product, SaleItem, SaleReturn } from '../utils/storage';
 
 interface AppState {
     sales: Sale[];
     expenses: Expense[];
     credits: Credit[];
     settings: Settings;
+    contacts: Contact[];
+    products: Product[];
+    returns: SaleReturn[];
     isLoading: boolean;
 }
 
@@ -16,6 +19,14 @@ interface AddSaleInput {
     totalAmount: number;
     paidAmount: number;
     paymentMethod: 'Cash' | 'UPI';
+    note: string;
+    items?: SaleItem[];
+}
+
+interface AddReturnInput {
+    saleId: string;
+    date: string;
+    amount: number;
     note: string;
 }
 
@@ -32,11 +43,30 @@ interface AppContextType extends AppState {
     addCredit: (credit: Omit<Credit, 'id'>) => Promise<void>;
     updateCredit: (id: string, credit: Partial<Credit>) => Promise<void>;
     deleteCredit: (id: string) => Promise<void>;
+    // Contacts
+    addContact: (contact: Omit<Contact, 'id' | 'createdAt'>) => Promise<void>;
+    updateContact: (id: string, contact: Partial<Contact>) => Promise<void>;
+    deleteContact: (id: string) => Promise<void>;
+    // Products
+    addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<void>;
+    updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+    deleteProduct: (id: string) => Promise<void>;
+    // Returns
+    addReturn: (input: AddReturnInput) => Promise<void>;
+    deleteReturn: (id: string) => Promise<void>;
     // Settings
     updateSettings: (settings: Partial<Settings>) => Promise<void>;
     // Data Management
     clearAllData: () => Promise<boolean>;
-    restoreData: (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) => Promise<boolean>;
+    restoreData: (data: {
+        sales?: Sale[];
+        expenses?: Expense[];
+        credits?: Credit[];
+        settings?: Settings;
+        contacts?: Contact[];
+        products?: Product[];
+        returns?: SaleReturn[];
+    }) => Promise<boolean>;
     // Computed
     getTodaySales: () => number;
     getTodayCashReceived: () => number;
@@ -67,17 +97,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         expenses: [],
         credits: [],
         settings: defaultSettings,
+        contacts: [],
+        products: [],
+        returns: [],
         isLoading: true,
     });
 
     // Load data on mount
     useEffect(() => {
         const loadData = async () => {
-            const [sales, expenses, credits, settings] = await Promise.all([
+            const [sales, expenses, credits, settings, contacts, products, returns] = await Promise.all([
                 storage.getSales(),
                 storage.getExpenses(),
                 storage.getCredits(),
                 storage.getSettings(),
+                storage.getContacts(),
+                storage.getProducts(),
+                storage.getReturns(),
             ]);
             const safeSettings = settings ? {
                 ...settings,
@@ -89,6 +125,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 expenses: expenses || [],
                 credits: credits || [],
                 settings: safeSettings,
+                contacts: contacts || [],
+                products: products || [],
+                returns: returns || [],
                 isLoading: false,
             });
         };
@@ -132,12 +171,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             paymentMethod: saleInput.paymentMethod,
             note: saleInput.note,
             linkedCreditId,
+            items: saleInput.items,
         };
 
         const newSales = [...state.sales, newSale];
         await storage.setSales(newSales);
-        setState((prev) => ({ ...prev, sales: newSales, credits: newCredits }));
-    }, [state.sales, state.credits]);
+
+        // Inventory Logic: Decrement stock for each item sold
+        let updatedProducts = [...state.products];
+        if (saleInput.items && saleInput.items.length > 0) {
+            for (const item of saleInput.items) {
+                updatedProducts = updatedProducts.map(p =>
+                    p.id === item.productId
+                        ? { ...p, stock: Math.max(0, p.stock - item.quantity) }
+                        : p
+                );
+            }
+            await storage.setProducts(updatedProducts);
+        }
+
+        setState((prev) => ({
+            ...prev,
+            sales: newSales,
+            credits: newCredits,
+            products: updatedProducts
+        }));
+    }, [state.sales, state.credits, state.products]);
 
     const updateSale = useCallback(async (id: string, updates: Partial<Sale>) => {
         const newSales = state.sales.map((s) => (s.id === id ? { ...s, ...updates } : s));
@@ -232,6 +291,168 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setState((prev) => ({ ...prev, credits: newCredits }));
     }, [state.credits]);
 
+    // Contacts
+    const addContact = useCallback(async (contactInput: Omit<Contact, 'id' | 'createdAt'>) => {
+        const newContact: Contact = {
+            ...contactInput,
+            id: generateId(),
+            createdAt: new Date().toISOString(),
+        };
+        const newContacts = [...state.contacts, newContact];
+        await storage.setContacts(newContacts);
+        setState((prev) => ({ ...prev, contacts: newContacts }));
+    }, [state.contacts]);
+
+    const updateContact = useCallback(async (id: string, updates: Partial<Contact>) => {
+        const newContacts = state.contacts.map((c) => (c.id === id ? { ...c, ...updates } : c));
+        await storage.setContacts(newContacts);
+        setState((prev) => ({ ...prev, contacts: newContacts }));
+    }, [state.contacts]);
+
+    const deleteContact = useCallback(async (id: string) => {
+        const contact = state.contacts.find(c => c.id === id);
+        if (!contact) return;
+
+        // Check if contact is used in sales or credits
+        const hasSales = state.sales.some(s => s.customerName === contact.name);
+        const hasCredits = state.credits.some(c => c.party === contact.name);
+        const hasExpenses = state.expenses.some(e => e.vendorId === id || e.vendorName === contact.name);
+
+        if (hasSales || hasCredits || hasExpenses) {
+            Alert.alert(
+                'Cannot Delete Contact',
+                'This contact is linked to existing transactions (Sales, Credits, or Expenses). Please delete those transactions first.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        const newContacts = state.contacts.filter((c) => c.id !== id);
+        await storage.setContacts(newContacts);
+        setState((prev) => ({ ...prev, contacts: newContacts }));
+    }, [state.contacts, state.sales, state.credits, state.expenses]);
+
+    // Products
+    const addProduct = useCallback(async (productInput: Omit<Product, 'id' | 'createdAt'>) => {
+        const newProduct: Product = {
+            ...productInput,
+            id: generateId(),
+            createdAt: new Date().toISOString(),
+        };
+        const newProducts = [...state.products, newProduct];
+        await storage.setProducts(newProducts);
+        setState((prev) => ({ ...prev, products: newProducts }));
+    }, [state.products]);
+
+    const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
+        const newProducts = state.products.map((p) => (p.id === id ? { ...p, ...updates } : p));
+        await storage.setProducts(newProducts);
+        setState((prev) => ({ ...prev, products: newProducts }));
+    }, [state.products]);
+
+    const deleteProduct = useCallback(async (id: string) => {
+        const product = state.products.find(p => p.id === id);
+        if (!product) return;
+
+        // Check if product is used in sales
+        const hasSales = state.sales.some(s => s.items?.some(item => item.productId === id));
+
+        if (hasSales) {
+            Alert.alert(
+                'Cannot Delete Product',
+                'This product is linked to existing sales. Please delete those sales first or mark the product as inactive (if supported).',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        const newProducts = state.products.filter((p) => p.id !== id);
+        await storage.setProducts(newProducts);
+        setState((prev) => ({ ...prev, products: newProducts }));
+    }, [state.products, state.sales]);
+
+    // Returns
+    const addReturn = useCallback(async (input: AddReturnInput) => {
+        const sale = state.sales.find(s => s.id === input.saleId);
+        if (!sale) return;
+
+        const returnId = generateId();
+        const newReturn: SaleReturn = {
+            id: returnId,
+            saleId: input.saleId,
+            date: input.date,
+            party: sale.customerName || 'Walk-in',
+            amount: input.amount,
+            note: input.note,
+            items: sale.items,
+        };
+
+        const newReturns = [...state.returns, newReturn];
+        await storage.setReturns(newReturns);
+
+        // Inventory Logic: Increment stock for each item returned
+        let updatedProducts = [...state.products];
+        if (sale.items && sale.items.length > 0) {
+            for (const item of sale.items) {
+                updatedProducts = updatedProducts.map(p =>
+                    p.id === item.productId
+                        ? { ...p, stock: p.stock + item.quantity }
+                        : p
+                );
+            }
+            await storage.setProducts(updatedProducts);
+        }
+
+        // Handle linked credit if it exists - Cancel the remaining credit
+        let updatedCredits = [...state.credits];
+        if (sale.linkedCreditId) {
+            updatedCredits = updatedCredits.map(c => {
+                if (c.id === sale.linkedCreditId) {
+                    // When a sale is returned, any pending credit for it should be cancelled
+                    return { ...c, amount: c.paidAmount, status: 'paid' as const };
+                }
+                return c;
+            });
+            await storage.setCredits(updatedCredits);
+        }
+
+        setState((prev) => ({
+            ...prev,
+            returns: newReturns,
+            products: updatedProducts,
+            credits: updatedCredits
+        }));
+
+        Alert.alert('Success', 'Sales return processed and stock updated.');
+    }, [state.sales, state.returns, state.products, state.credits]);
+
+    const deleteReturn = useCallback(async (id: string) => {
+        const ret = state.returns.find(r => r.id === id);
+        if (!ret) return;
+
+        const newReturns = state.returns.filter(r => r.id !== id);
+        await storage.setReturns(newReturns);
+
+        // Rollback inventory if possible
+        let updatedProducts = [...state.products];
+        if (ret.items && ret.items.length > 0) {
+            for (const item of ret.items) {
+                updatedProducts = updatedProducts.map(p =>
+                    p.id === item.productId
+                        ? { ...p, stock: Math.max(0, p.stock - item.quantity) }
+                        : p
+                );
+            }
+            await storage.setProducts(updatedProducts);
+        }
+
+        setState((prev) => ({
+            ...prev,
+            returns: newReturns,
+            products: updatedProducts
+        }));
+    }, [state.returns, state.products]);
+
     // Settings
     const updateSettings = useCallback(async (updates: Partial<Settings>) => {
         const newSettings = { ...state.settings, ...updates };
@@ -248,6 +469,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 expenses: [],
                 credits: [],
                 settings: defaultSettings,
+                contacts: [],
+                products: [],
+                returns: [],
                 isLoading: false,
             });
         }
@@ -255,7 +479,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, []);
 
     // Restore data from backup
-    const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings }) => {
+    const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings; contacts?: Contact[]; products?: Product[]; returns?: SaleReturn[] }) => {
         const success = await storage.importAllData(data);
         if (success) {
             setState({
@@ -263,6 +487,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 expenses: data.expenses || [],
                 credits: data.credits || [],
                 settings: data.settings ? { ...data.settings, lock: Boolean(data.settings.lock) } : defaultSettings,
+                contacts: data.contacts || [],
+                products: data.products || [],
+                returns: data.returns || [],
                 isLoading: false,
             });
         }
@@ -318,16 +545,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const getBalance = useCallback(() => {
         const totalSales = state.sales.reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
         const totalExpenses = state.expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
-        // Credit payments received (from given credits) add to balance
+
+        // Credit received (from given credits)
         const creditReceived = state.credits
             .filter((c) => c.type === 'given')
             .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
+
         // Credit payments made (for taken credits) subtract from balance
         const creditPaid = state.credits
             .filter((c) => c.type === 'taken')
             .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
-        return totalSales + creditReceived - totalExpenses - creditPaid;
-    }, [state.sales, state.expenses, state.credits]);
+
+        // Sales returns subtract from balance
+        const totalReturns = state.returns.reduce((sum, r) => sum + (r.amount ?? 0), 0);
+
+        return totalSales + creditReceived - totalExpenses - creditPaid - totalReturns;
+    }, [state.sales, state.expenses, state.credits, state.returns]);
 
     return (
         <AppContext.Provider
@@ -353,6 +586,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 getCreditPaymentsReceived,
                 getCreditPaymentsMade,
                 addCreditPayment,
+                addContact,
+                updateContact,
+                deleteContact,
+                addProduct,
+                updateProduct,
+                deleteProduct,
+                addReturn,
+                deleteReturn,
             }}
         >
             {children}

@@ -15,12 +15,14 @@ import {
     ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet, Boxes, Fuel, Phone, Heart, GraduationCap, Wrench, ChevronDown, ChevronUp } from 'lucide-react-native';
-import { Card, Input, DateFilter, filterByDateRange, getFilterLabel } from '../components';
+import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet, Boxes, Fuel, Phone, Heart, GraduationCap, Wrench, ChevronDown, ChevronUp, Scan } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker } from '../components';
+import { OCRScanner } from './OCRScanner';
+import { parseReceiptText } from '../utils/nlpParser';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
-import { Expense } from '../utils/storage';
+import { Expense, Contact } from '../utils/storage';
 
 // Business Categories
 const BUSINESS_CATEGORIES = [
@@ -46,7 +48,7 @@ const PERSONAL_CATEGORIES = [
 const ALL_CATEGORIES = [...BUSINESS_CATEGORIES, ...PERSONAL_CATEGORIES];
 
 export const ExpensesScreen: React.FC = () => {
-    const { expenses, addExpense, updateExpense, deleteExpense, settings } = useApp();
+    const { expenses, addExpense, updateExpense, deleteExpense, settings, contacts } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -54,9 +56,12 @@ export const ExpensesScreen: React.FC = () => {
     const [amount, setAmount] = useState('');
     const [note, setNote] = useState('');
     const [category, setCategory] = useState('other');
+    const [vendorName, setVendorName] = useState('');
+    const [vendorId, setVendorId] = useState('');
     const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [dateInputValue, setDateInputValue] = useState('');
+    const [isOCRVisible, setIsOCRVisible] = useState(false);
     const slideAnim = useRef(new Animated.Value(100)).current;
 
     const today = new Date().toISOString().split('T')[0];
@@ -77,6 +82,8 @@ export const ExpensesScreen: React.FC = () => {
         setAmount('');
         setNote('');
         setCategory('other');
+        setVendorName('');
+        setVendorId('');
         setModalVisible(true);
     };
 
@@ -85,6 +92,8 @@ export const ExpensesScreen: React.FC = () => {
         setAmount(expense.amount.toString());
         setNote(expense.note);
         setCategory(expense.category);
+        setVendorName(expense.vendorName || '');
+        setVendorId(expense.vendorId || '');
         setModalVisible(true);
     };
 
@@ -103,11 +112,24 @@ export const ExpensesScreen: React.FC = () => {
         }
 
         if (editingExpense) {
-            await updateExpense(editingExpense.id, { amount: parsedAmount, note, category });
+            await updateExpense(editingExpense.id, { amount: parsedAmount, note, category, vendorName, vendorId });
         } else {
-            await addExpense({ date: today, amount: parsedAmount, note, category });
+            await addExpense({ date: selectedDate || today, amount: parsedAmount, note, category, vendorName, vendorId });
         }
         setModalVisible(false);
+    };
+
+    const handleOCRScan = (text: string) => {
+        setIsOCRVisible(false);
+        const parsed = parseReceiptText(text);
+
+        setAmount(parsed.amount?.toString() || '');
+        setCategory(parsed.category || 'other');
+        setNote(parsed.note || '');
+        if (parsed.date) {
+            setSelectedDate(parsed.date);
+        }
+        setModalVisible(true);
     };
 
     const handleFilterChange = (filter: DateFilterType) => {
@@ -193,6 +215,11 @@ export const ExpensesScreen: React.FC = () => {
                     </View>
                 </View>
 
+                {/* Vendor name if present */}
+                {item.vendorName ? (
+                    <Text style={styles.vendorLabel}>{item.vendorName}</Text>
+                ) : null}
+
                 {/* Row 2: Note, date */}
                 {subtitleParts.length > 0 && (
                     <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
@@ -242,9 +269,29 @@ export const ExpensesScreen: React.FC = () => {
                 />
             </Animated.View>
 
-            <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
-                <Text style={styles.floatingButtonText}>+ Add Expense</Text>
-            </Pressable>
+            <View style={styles.buttonContainer}>
+                <Pressable
+                    style={({ pressed }) => [styles.scanButton, pressed && styles.floatingButtonPressed]}
+                    onPress={() => setIsOCRVisible(true)}
+                >
+                    <Scan color={colors.text.inverse} size={20} />
+                </Pressable>
+                <Pressable
+                    style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]}
+                    onPress={handleAdd}
+                >
+                    <Text style={styles.floatingButtonText}>+ Add Expense</Text>
+                </Pressable>
+            </View>
+
+            {/* OCR Scanner Modal */}
+            <Modal visible={isOCRVisible} animationType="slide" transparent={false}>
+                <OCRScanner
+                    colors={colors}
+                    onClose={() => setIsOCRVisible(false)}
+                    onScan={handleOCRScan}
+                />
+            </Modal>
 
             {/* Date Picker Modal */}
             <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
@@ -319,6 +366,24 @@ export const ExpensesScreen: React.FC = () => {
                                     ))}
                                 </View>
 
+                                <Text style={styles.categoryGroupLabel}>🤝 Vendor/Contact</Text>
+                                <ContactPicker
+                                    contacts={contacts}
+                                    colors={colors}
+                                    filterType="Vendor"
+                                    onSelect={(contact: Contact) => {
+                                        setVendorName(contact.name);
+                                        setVendorId(contact.id);
+                                    }}
+                                />
+
+                                <Input
+                                    label="Vendor Name (Manual)"
+                                    placeholder="Enter vendor name"
+                                    value={vendorName}
+                                    onChangeText={setVendorName}
+                                />
+
                                 <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
                                 <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
                                 <View style={styles.modalButtons}>
@@ -389,7 +454,37 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
     emptySubtext: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, marginTop: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.regular },
     listContent: { paddingBottom: 160 },
-    floatingButton: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: colors.brand.primary, height: 52, minWidth: 200, borderRadius: 26, justifyContent: 'center', alignItems: 'center', paddingHorizontal: tokens.spacing.lg, ...tokens.shadow.floatingButton },
+    buttonContainer: {
+        position: 'absolute',
+        bottom: 110,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: tokens.spacing.md,
+    },
+    floatingButton: {
+        backgroundColor: colors.brand.primary,
+        height: 52,
+        flex: 1,
+        maxWidth: 240,
+        borderRadius: 26,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: tokens.spacing.lg,
+        ...tokens.shadow.floatingButton,
+    },
+    scanButton: {
+        backgroundColor: colors.brand.secondary,
+        height: 52,
+        width: 52,
+        borderRadius: 26,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...tokens.shadow.floatingButton,
+    },
     floatingButtonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
     floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.semibold },
     modalOverlay: { flex: 1, justifyContent: 'flex-end' },
@@ -413,6 +508,14 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     saveBtn: { backgroundColor: colors.brand.primary },
     saveBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
     expenseDate: { fontSize: tokens.typography.sizes.xs, color: colors.brand.primary, marginTop: 2, fontFamily: tokens.typography.fontFamily.medium },
+    vendorLabel: {
+        fontSize: 12,
+        color: colors.brand.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginLeft: 52,
+        marginTop: -2,
+        marginBottom: 2,
+    },
     // Date Picker Modal Styles
     datePickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     datePickerCard: { backgroundColor: colors.semantic.surface, borderRadius: tokens.radius.lg, padding: tokens.spacing.lg, width: '85%', maxWidth: 340 },

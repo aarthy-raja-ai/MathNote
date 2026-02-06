@@ -70,7 +70,7 @@ export const pdfService = {
         </head>
         <body>
             <h1>📊 MathNote Report</h1>
-            <p class="date-range">${startDate} to ${endDate}</p>
+            <p class="date-range">${startDate === endDate ? `Report for ${startDate}` : `${startDate} to ${endDate}`}</p>
 
             <div class="summary-grid">
                 <div class="summary-card sales">
