@@ -163,18 +163,31 @@ export interface SaleItem {
     quantity: number;
     unitPrice: number;
     costPrice?: number;
+    // Discount & Tax
+    discountPercent?: number;
+    discountAmount?: number;
+    taxRate?: number;
+    taxAmount?: number;
 }
 
 export interface Sale {
     id: string;
     date: string;
     customerName: string;           // Customer name for the sale
-    totalAmount: number;            // Total sale amount
+    totalAmount: number;            // Total sale amount (after discount & tax)
     paidAmount: number;             // Amount paid at time of sale
     paymentMethod: 'Cash' | 'UPI';
     note: string;
     linkedCreditId?: string;        // Reference to auto-created credit (if partial payment)
     items?: SaleItem[];             // Linked inventory items
+    // Invoice & Billing
+    invoiceNumber?: string;
+    subtotal?: number;              // Before discount & tax
+    discountTotal?: number;
+    taxTotal?: number;
+    cgst?: number;
+    sgst?: number;
+    igst?: number;
 }
 
 export interface Expense {
@@ -185,6 +198,7 @@ export interface Expense {
     note: string;
     vendorName?: string;
     vendorId?: string;
+    paymentMethod?: 'Cash' | 'UPI';
 }
 
 export interface CreditPayment {
@@ -212,6 +226,21 @@ export interface Settings {
     theme: 'light' | 'dark';
     currency: string;
     lock: boolean;
+    // Business Profile
+    businessName?: string;
+    businessAddress?: string;
+    businessPhone?: string;
+    businessGSTIN?: string;
+    businessLogo?: string; // base64 or URI
+    // GST Settings
+    gstEnabled?: boolean;
+    gstRate?: number; // 5, 12, 18, 28
+    gstType?: 'intra' | 'inter'; // CGST+SGST or IGST
+    // Invoice Settings
+    invoicePrefix?: string; // e.g., "INV"
+    lastInvoiceNumber?: number;
+    invoiceTemplate?: 'classic' | 'modern' | 'minimal';
+    invoicePrintSize?: 'A4' | 'A5' | 'thermal80' | 'thermal58';
 }
 
 export interface Contact {

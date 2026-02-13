@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell, Share2 } from 'lucide-react-native';
+import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell, Share2, Building2, Receipt, FileText, Printer } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
@@ -40,9 +40,14 @@ export const SettingsScreen: React.FC = () => {
     const { mode, toggleTheme, colors, isDark } = useTheme();
     const navigation = useNavigation<any>();
     const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+    const [showGstRatePicker, setShowGstRatePicker] = useState(false);
+    const [showPrintSizePicker, setShowPrintSizePicker] = useState(false);
+    const [showTemplatePicker, setShowTemplatePicker] = useState(false);
     const [remindersEnabled, setRemindersEnabled] = useState(false);
     const [isCloudSyncing, setIsCloudSyncing] = useState(false);
     const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
+
+    const GST_RATES = [5, 12, 18, 28];
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -290,6 +295,208 @@ export const SettingsScreen: React.FC = () => {
                         </View>
                     </Card>
 
+                    {/* Business Profile Section */}
+                    <Text style={styles.sectionTitle}>Business</Text>
+                    <Card style={styles.settingCard}>
+                        <TouchableOpacity style={styles.settingRow} onPress={() => navigation.navigate('BusinessProfile')}>
+                            <View style={styles.settingInfo}>
+                                <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
+                                    <Building2 size={20} color={colors.brand.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>Business Profile</Text>
+                                    <Text style={styles.settingDescription}>
+                                        {settings.businessName || 'Add your business details for invoices'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
+                        </TouchableOpacity>
+                    </Card>
+
+                    {/* GST Settings */}
+                    <Card style={styles.settingCard}>
+                        <View style={styles.settingRow}>
+                            <View style={styles.settingInfo}>
+                                <View style={styles.iconWrapper}>
+                                    <Receipt size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>GST/Tax</Text>
+                                    <Text style={styles.settingDescription}>Enable tax calculation on invoices</Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={Boolean(settings.gstEnabled)}
+                                onValueChange={(value) => updateSettings({ gstEnabled: value })}
+                                trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+                                thumbColor={colors.semantic.surface}
+                            />
+                        </View>
+                    </Card>
+
+                    {settings.gstEnabled && (
+                        <>
+                            <Card style={styles.settingCard}>
+                                <TouchableOpacity style={styles.settingRow} onPress={() => setShowGstRatePicker(!showGstRatePicker)}>
+                                    <View style={styles.settingInfo}>
+                                        <View style={styles.iconWrapper}>
+                                            <Receipt size={20} color={colors.text.primary} strokeWidth={2} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.settingLabel}>GST Rate</Text>
+                                            <Text style={styles.settingDescription}>
+                                                Current rate: {settings.gstRate || 18}%
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.currencyValue}>{settings.gstRate || 18}%</Text>
+                                </TouchableOpacity>
+
+                                {showGstRatePicker && (
+                                    <View style={styles.currencyPicker}>
+                                        {GST_RATES.map((rate) => (
+                                            <TouchableOpacity
+                                                key={rate}
+                                                style={[styles.currencyOption, settings.gstRate === rate && styles.currencySelected]}
+                                                onPress={() => {
+                                                    updateSettings({ gstRate: rate });
+                                                    setShowGstRatePicker(false);
+                                                }}
+                                            >
+                                                <Text style={styles.currencyCode}>{rate}%</Text>
+                                                <Text style={styles.currencyName}>GST Rate</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )}
+                            </Card>
+
+                            <Card style={styles.settingCard}>
+                                <View style={styles.settingRow}>
+                                    <View style={styles.settingInfo}>
+                                        <View style={styles.iconWrapper}>
+                                            <Receipt size={20} color={colors.text.primary} strokeWidth={2} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.settingLabel}>GST Type</Text>
+                                            <Text style={styles.settingDescription}>
+                                                {settings.gstType === 'inter' ? 'Inter-state (IGST)' : 'Intra-state (CGST + SGST)'}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                </View>
+                                <View style={styles.gstTypeSelector}>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.gstTypeOption,
+                                            settings.gstType !== 'inter' && { backgroundColor: colors.brand.primary }
+                                        ]}
+                                        onPress={() => updateSettings({ gstType: 'intra' })}
+                                    >
+                                        <Text style={[
+                                            styles.gstTypeText,
+                                            settings.gstType !== 'inter' && { color: colors.text.inverse }
+                                        ]}>CGST + SGST</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.gstTypeOption,
+                                            settings.gstType === 'inter' && { backgroundColor: colors.brand.primary }
+                                        ]}
+                                        onPress={() => updateSettings({ gstType: 'inter' })}
+                                    >
+                                        <Text style={[
+                                            styles.gstTypeText,
+                                            settings.gstType === 'inter' && { color: colors.text.inverse }
+                                        ]}>IGST</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </Card>
+                        </>
+                    )}
+
+                    {/* Invoice Settings */}
+                    <Text style={styles.sectionTitle}>Invoice</Text>
+                    <Card style={styles.settingCard}>
+                        <TouchableOpacity style={styles.settingRow} onPress={() => setShowPrintSizePicker(!showPrintSizePicker)}>
+                            <View style={styles.settingInfo}>
+                                <View style={styles.iconWrapper}>
+                                    <Printer size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>Default Print Size</Text>
+                                    <Text style={styles.settingDescription}>
+                                        {settings.invoicePrintSize === 'thermal58' ? '58mm Thermal' : settings.invoicePrintSize === 'thermal80' ? '80mm Thermal' : settings.invoicePrintSize || 'A4'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <Text style={styles.currencyValue}>{settings.invoicePrintSize || 'A4'}</Text>
+                        </TouchableOpacity>
+
+                        {showPrintSizePicker && (
+                            <View style={styles.currencyPicker}>
+                                {[
+                                    { value: 'A4', label: 'A4 (Full Page)' },
+                                    { value: 'A5', label: 'A5 (Half Page)' },
+                                    { value: 'thermal80', label: '80mm Thermal' },
+                                    { value: 'thermal58', label: '58mm Thermal' },
+                                ].map((opt) => (
+                                    <TouchableOpacity
+                                        key={opt.value}
+                                        style={[styles.currencyOption, settings.invoicePrintSize === opt.value && styles.currencySelected]}
+                                        onPress={() => {
+                                            updateSettings({ invoicePrintSize: opt.value as any });
+                                            setShowPrintSizePicker(false);
+                                        }}
+                                    >
+                                        <Text style={styles.currencyCode}>{opt.value}</Text>
+                                        <Text style={styles.currencyName}>{opt.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                    </Card>
+
+                    <Card style={styles.settingCard}>
+                        <TouchableOpacity style={styles.settingRow} onPress={() => setShowTemplatePicker(!showTemplatePicker)}>
+                            <View style={styles.settingInfo}>
+                                <View style={styles.iconWrapper}>
+                                    <FileText size={20} color={colors.text.primary} strokeWidth={2} />
+                                </View>
+                                <View>
+                                    <Text style={styles.settingLabel}>Default Template</Text>
+                                    <Text style={styles.settingDescription}>
+                                        {(settings.invoiceTemplate || 'classic').charAt(0).toUpperCase() + (settings.invoiceTemplate || 'classic').slice(1)} style
+                                    </Text>
+                                </View>
+                            </View>
+                            <Text style={styles.currencyValue}>{(settings.invoiceTemplate || 'classic').charAt(0).toUpperCase() + (settings.invoiceTemplate || 'classic').slice(1)}</Text>
+                        </TouchableOpacity>
+
+                        {showTemplatePicker && (
+                            <View style={styles.currencyPicker}>
+                                {[
+                                    { value: 'classic', label: 'Classic', desc: 'Red accent, formal layout' },
+                                    { value: 'modern', label: 'Modern', desc: 'Gradient header, card layout' },
+                                    { value: 'minimal', label: 'Minimal', desc: 'Black & white, compact' },
+                                ].map((opt) => (
+                                    <TouchableOpacity
+                                        key={opt.value}
+                                        style={[styles.currencyOption, settings.invoiceTemplate === opt.value && styles.currencySelected]}
+                                        onPress={() => {
+                                            updateSettings({ invoiceTemplate: opt.value as any });
+                                            setShowTemplatePicker(false);
+                                        }}
+                                    >
+                                        <Text style={styles.currencyCode}>{opt.label}</Text>
+                                        <Text style={styles.currencyName}>{opt.desc}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                    </Card>
+
                     <Text style={styles.sectionTitle}>Preferences</Text>
                     <Card style={styles.settingCard}>
                         <TouchableOpacity style={styles.settingRow} onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}>
@@ -516,6 +723,24 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     version: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, marginTop: tokens.spacing.sm, fontFamily: tokens.typography.fontFamily.regular },
     bottomSpacer: { height: tokens.spacing.xl + 80 },
     row: { flexDirection: 'row', alignItems: 'center' },
+    gstTypeSelector: {
+        flexDirection: 'row',
+        marginTop: tokens.spacing.md,
+        backgroundColor: colors.semantic.background,
+        borderRadius: tokens.radius.md,
+        padding: 4
+    },
+    gstTypeOption: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: tokens.radius.sm,
+        alignItems: 'center'
+    },
+    gstTypeText: {
+        fontSize: tokens.typography.sizes.sm,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium
+    },
 });
 
 export default SettingsScreen;

@@ -15,10 +15,8 @@ import {
     ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet, Boxes, Fuel, Phone, Heart, GraduationCap, Wrench, ChevronDown, ChevronUp, Scan } from 'lucide-react-native';
+import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Pencil, Trash2, X, Wallet, Boxes, Fuel, Phone, Heart, GraduationCap, Wrench, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker } from '../components';
-import { OCRScanner } from './OCRScanner';
-import { parseReceiptText } from '../utils/nlpParser';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
@@ -61,7 +59,7 @@ export const ExpensesScreen: React.FC = () => {
     const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [dateInputValue, setDateInputValue] = useState('');
-    const [isOCRVisible, setIsOCRVisible] = useState(false);
+
     const slideAnim = useRef(new Animated.Value(100)).current;
 
     const today = new Date().toISOString().split('T')[0];
@@ -119,18 +117,7 @@ export const ExpensesScreen: React.FC = () => {
         setModalVisible(false);
     };
 
-    const handleOCRScan = (text: string) => {
-        setIsOCRVisible(false);
-        const parsed = parseReceiptText(text);
 
-        setAmount(parsed.amount?.toString() || '');
-        setCategory(parsed.category || 'other');
-        setNote(parsed.note || '');
-        if (parsed.date) {
-            setSelectedDate(parsed.date);
-        }
-        setModalVisible(true);
-    };
 
     const handleFilterChange = (filter: DateFilterType) => {
         setDateFilter(filter);
@@ -271,27 +258,12 @@ export const ExpensesScreen: React.FC = () => {
 
             <View style={styles.buttonContainer}>
                 <Pressable
-                    style={({ pressed }) => [styles.scanButton, pressed && styles.floatingButtonPressed]}
-                    onPress={() => setIsOCRVisible(true)}
-                >
-                    <Scan color={colors.text.inverse} size={20} />
-                </Pressable>
-                <Pressable
                     style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]}
                     onPress={handleAdd}
                 >
                     <Text style={styles.floatingButtonText}>+ Add Expense</Text>
                 </Pressable>
             </View>
-
-            {/* OCR Scanner Modal */}
-            <Modal visible={isOCRVisible} animationType="slide" transparent={false}>
-                <OCRScanner
-                    colors={colors}
-                    onClose={() => setIsOCRVisible(false)}
-                    onScan={handleOCRScan}
-                />
-            </Modal>
 
             {/* Date Picker Modal */}
             <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
@@ -399,7 +371,7 @@ export const ExpensesScreen: React.FC = () => {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
-        </SafeAreaView>
+        </SafeAreaView >
     );
 };
 

@@ -15,12 +15,13 @@ import {
     Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake, MessageCircle, Search, X } from 'lucide-react-native';
-import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker } from '../components';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, PlusCircle, History, Calendar, Banknote, Smartphone, Handshake, MessageCircle, Search, X, FileDown, FileText } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, PartyLedger } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Credit, CreditPayment } from '../utils/storage';
+import { generateCreditReport } from '../utils/invoiceGenerator';
 
 export const CreditsScreen: React.FC = () => {
     const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment, contacts } = useApp();
@@ -37,6 +38,8 @@ export const CreditsScreen: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const [paymentPaymentMode, setPaymentPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
+    const [ledgerVisible, setLedgerVisible] = useState(false);
+    const [ledgerParty, setLedgerParty] = useState<{ name: string; type: 'customer' | 'vendor' }>({ name: '', type: 'customer' });
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     const today = new Date().toISOString().split('T')[0];
@@ -254,6 +257,17 @@ export const CreditsScreen: React.FC = () => {
         });
     };
 
+    // Generate PDF report for a party
+    const handleDownloadReport = (group: GroupedParty) => {
+        generateCreditReport(group.party, group.credits, settings);
+    };
+
+    const handleViewStatement = (group: any) => {
+        const hasGiven = group.credits.some((c: Credit) => c.type === 'given');
+        setLedgerParty({ name: group.party, type: hasGiven ? 'customer' : 'vendor' });
+        setLedgerVisible(true);
+    };
+
     const renderCreditItem = (item: Credit, isSubItem: boolean = false) => {
         const linkedSale = getLinkedSale(item);
         const isToday = item.date === today;
@@ -416,6 +430,22 @@ export const CreditsScreen: React.FC = () => {
                             <Text style={styles.summaryChipTextTaken}>Taken: {currency}{item.dueTaken.toLocaleString()}</Text>
                         </View>
                     )}
+                    {/* Download Report Button */}
+                    <Pressable
+                        style={styles.reportButton}
+                        onPress={() => handleDownloadReport(item)}
+                    >
+                        <FileDown size={14} color={colors.brand.secondary} />
+                        <Text style={styles.reportButtonText}>Report</Text>
+                    </Pressable>
+                    {/* View Statement Button */}
+                    <Pressable
+                        style={styles.statementButton}
+                        onPress={() => handleViewStatement(item)}
+                    >
+                        <FileText size={14} color={colors.text.inverse} />
+                        <Text style={styles.statementButtonText}>Statement</Text>
+                    </Pressable>
                 </View>
 
                 {/* Expanded Credits List */}
@@ -970,6 +1000,22 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     smallActionBtnText: {
         fontSize: 10,
         color: colors.semantic.success,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    // Report button styles
+    reportButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 4,
+        paddingHorizontal: tokens.spacing.sm,
+        backgroundColor: colors.semantic.soft,
+        borderRadius: tokens.radius.sm,
+        marginLeft: 'auto',
+    },
+    reportButtonText: {
+        fontSize: 11,
+        color: colors.brand.secondary,
         fontFamily: tokens.typography.fontFamily.medium,
     },
 });

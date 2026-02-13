@@ -1,92 +1,16 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Animated, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Animated, Pressable, Platform, ActivityIndicator, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { TrendingUp, Receipt, Handshake, Sparkles, Send, X, Check, Settings as SettingsIcon, RotateCcw, FileText, BarChart3 } from 'lucide-react-native';
+import { TrendingUp, Receipt, Handshake, Sparkles, Send, X, Check, Settings as SettingsIcon, RotateCcw, FileText, BarChart3, Zap, AlertCircle, Eye, EyeOff } from 'lucide-react-native';
 import { tokens, useTheme } from '../theme';
+import { DashboardCard } from '../components/DashboardCard';
 import { useApp } from '../context';
 import { parseMagicNote, ParsedTransaction } from '../utils/nlpParser';
 import { Modal, TextInput, KeyboardAvoidingView, Alert } from 'react-native';
 import pdfService from '../utils/pdfService';
 
-interface QuickActionProps {
-    icon: React.ReactNode;
-    label: string;
-    onPress: () => void;
-    colors: typeof tokens.colors;
-}
 
-const QuickActionCard: React.FC<QuickActionProps> = ({ icon, label, onPress, colors }) => {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-        Animated.spring(scaleAnim, {
-            toValue: tokens.motion.scale.pressIn,
-            useNativeDriver: true,
-            tension: 100,
-            friction: 10,
-        }).start();
-    };
-
-    const handlePressOut = () => {
-        Animated.spring(scaleAnim, {
-            toValue: tokens.motion.scale.pressOut,
-            useNativeDriver: true,
-            tension: 100,
-            friction: 10,
-        }).start();
-    };
-
-    return (
-        <Pressable
-            onPress={onPress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            style={actionStyles.actionPressable}
-        >
-            <Animated.View style={[
-                actionStyles.actionCard,
-                {
-                    transform: [{ scale: scaleAnim }],
-                    backgroundColor: colors.semantic.surface,
-                }
-            ]}>
-                <View style={actionStyles.iconContainer}>
-                    {icon}
-                </View>
-                <Text style={[
-                    actionStyles.actionLabel,
-                    {
-                        color: colors.brand.secondary,
-                        fontFamily: tokens.typography.fontFamily.semibold,
-                    }
-                ]}>{label}</Text>
-            </Animated.View>
-        </Pressable>
-    );
-};
-
-const actionStyles = StyleSheet.create({
-    actionPressable: {
-        flex: 1,
-    },
-    actionCard: {
-        borderRadius: 18,
-        padding: tokens.spacing.md,
-        alignItems: 'center',
-        minHeight: 100,
-        justifyContent: 'center',
-        ...tokens.shadow.quickAction,
-    },
-    iconContainer: {
-        marginBottom: tokens.spacing.xs,
-    },
-    actionLabel: {
-        fontSize: tokens.typography.sizes.sm,
-        textAlign: 'center',
-        marginTop: tokens.spacing.xs,
-    },
-});
 
 export const DashboardScreen: React.FC = () => {
     const {
@@ -104,7 +28,9 @@ export const DashboardScreen: React.FC = () => {
         credits,
         addSale,
         addExpense,
-        addCredit
+        addCredit,
+        getCashBalance,
+        getUPIBalance
     } = useApp();
     const { colors, isDark } = useTheme();
     const navigation = useNavigation<any>();
@@ -116,6 +42,8 @@ export const DashboardScreen: React.FC = () => {
     const [showPreview, setShowPreview] = React.useState(false);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [isExporting, setIsExporting] = React.useState(false);
+    const [pageIndex, setPageIndex] = React.useState(0);
+    const [balanceVisible, setBalanceVisible] = React.useState(true);
 
     // Hint Cycling
     const hints = [
@@ -133,8 +61,6 @@ export const DashboardScreen: React.FC = () => {
         }, 4000);
         return () => clearInterval(interval);
     }, []);
-
-
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -170,23 +96,33 @@ export const DashboardScreen: React.FC = () => {
     const balance = getBalance();
     const currency = settings.currency;
 
+    const cashBalance = getCashBalance();
+    const upiBalance = getUPIBalance();
+
     // Inventory Calculations
     const totalStockItems = products.reduce((sum, p) => sum + p.stock, 0);
     const lowStockItems = products.filter(p => p.stock <= (p.minStockLevel || 5)).length;
 
+    const { width } = Dimensions.get('window');
+    const handleScroll = (event: any) => {
+        const scrollPosition = event.nativeEvent.contentOffset.x;
+        const index = Math.round(scrollPosition / width);
+        setPageIndex(index);
+    };
+
     const quickActions = [
         {
-            icon: <TrendingUp size={28} color={colors.icon.active} strokeWidth={2.5} />,
+            icon: <TrendingUp size={24} color={colors.icon.active} strokeWidth={2.5} />,
             label: 'Add Sale',
             screen: 'Sales',
         },
         {
-            icon: <Receipt size={28} color={colors.icon.active} strokeWidth={2.5} />,
+            icon: <Receipt size={24} color={colors.icon.active} strokeWidth={2.5} />,
             label: 'Add Expense',
             screen: 'Expenses',
         },
         {
-            icon: <BarChart3 size={28} color={colors.icon.active} strokeWidth={2.5} />,
+            icon: <BarChart3 size={24} color={colors.icon.active} strokeWidth={2.5} />,
             label: 'Stats',
             screen: 'Reports',
         },
@@ -249,8 +185,6 @@ export const DashboardScreen: React.FC = () => {
         }
     };
 
-
-
     const handleExportToday = async () => {
         setIsExporting(true);
         try {
@@ -271,185 +205,232 @@ export const DashboardScreen: React.FC = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <View style={styles.headerTop}>
-                            <View>
-                                <Text style={styles.greeting}>Welcome back! 👋</Text>
-                                <Text style={styles.title}>Math Note</Text>
-                            </View>
-                            <Pressable onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
-                                <SettingsIcon size={24} color={colors.text.secondary} />
+            <View style={styles.content}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <View style={styles.headerTop}>
+                        <View>
+                            <Text style={styles.greeting}>Welcome back! ðŸ‘‹</Text>
+                            <Text style={styles.title}>{settings.businessName || 'Math Note'}</Text>
+                        </View>
+                        <Pressable onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
+                            <SettingsIcon size={24} color={colors.text.secondary} />
+                        </Pressable>
+                    </View>
+                </View>
+
+                {/* Live Balance Row */}
+                <View style={styles.balanceRow}>
+                    <DashboardCard style={[styles.balanceCardHalf, { backgroundColor: colors.semantic.surface }]}>
+                        <View style={styles.balanceCardHeader}>
+                            <Text style={styles.balanceLabel}>Cash Balance</Text>
+                            <Pressable onPress={() => setBalanceVisible(!balanceVisible)} hitSlop={8}>
+                                {balanceVisible ? <Eye size={16} color={colors.text.secondary} /> : <EyeOff size={16} color={colors.text.secondary} />}
                             </Pressable>
                         </View>
-                        <Text style={styles.tagline}>Every Number. Clearly Noted.</Text>
-                    </View>
-
-                    {/* Magic Note Bar */}
-                    <View style={styles.magicBarContainer}>
-                        <View style={styles.magicInputWrapper}>
-                            <Sparkles size={20} color={colors.brand.primary} style={styles.magicIcon} />
-                            <TextInput
-                                style={styles.magicInput}
-                                placeholder={hints[hintIndex]}
-                                placeholderTextColor={colors.text.muted}
-                                value={magicNote}
-                                onChangeText={setMagicNote}
-                                onSubmitEditing={handleMagicSubmit}
-                            />
-                            {magicNote.length > 0 && (
-                                <Pressable onPress={handleMagicSubmit} style={styles.sendButton}>
-                                    <Send size={20} color={colors.brand.primary} />
-                                </Pressable>
-                            )}
-                        </View>
-                    </View>
-
-                    {/* Summary Cards */}
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Today's Summary</Text>
-                        <Pressable
-                            style={[styles.exportTodayBtn, isExporting && { opacity: 0.6 }]}
-                            onPress={handleExportToday}
-                            disabled={isExporting}
-                        >
-                            {isExporting ? <ActivityIndicator size="small" color={colors.brand.primary} /> : <FileText size={18} color={colors.brand.primary} />}
-                            <Text style={styles.exportTodayText}>PDF Report</Text>
-                        </Pressable>
-                        <Pressable
-                            style={[styles.exportTodayBtn, { backgroundColor: colors.brand.secondary + '15' }]}
-                            onPress={() => navigation.navigate('Reports')}
-                        >
-                            <BarChart3 size={18} color={colors.brand.secondary} />
-                            <Text style={[styles.exportTodayText, { color: colors.brand.secondary }]}>View Stats</Text>
-                        </Pressable>
-                    </View>
-
-                    <View style={styles.summaryCard}>
-                        <Text style={styles.cardLabel}>Today's Sales</Text>
-                        <Text style={styles.cardAmountGreen}>
-                            {currency} {todaySales.toLocaleString()}
+                        <Text style={[styles.balanceAmount, { color: colors.semantic.success }]}>
+                            {balanceVisible ? `${currency} ${cashBalance.toLocaleString()}` : `${currency} ••••••`}
                         </Text>
-                    </View>
-
-                    <View style={styles.summaryCard}>
-                        <Text style={styles.cardAmountRed}>
-                            {currency} {todayExpenses.toLocaleString()}
-                        </Text>
-                    </View>
-
-                    {/* Inventory Summary Card */}
-                    <View style={styles.inventoryCard}>
-                        <View style={styles.inventoryHeader}>
-                            <View>
-                                <Text style={styles.cardLabel}>Inventory Status</Text>
-                                <Text style={styles.inventoryMain}>
-                                    {totalStockItems} Items in Stock
-                                </Text>
-                            </View>
-                            {lowStockItems > 0 && (
-                                <View style={styles.lowStockBadgeLarge}>
-                                    <Text style={styles.lowStockTitle}>{lowStockItems}</Text>
-                                    <Text style={styles.lowStockSub}>Alerts</Text>
-                                </View>
-                            )}
+                        <View style={[styles.balanceTag, { backgroundColor: colors.semantic.success + '20' }]}>
+                            <Text style={[styles.balanceTagText, { color: colors.semantic.success }]}>LIVE</Text>
                         </View>
+                    </DashboardCard>
 
-                        {lowStockItems > 0 && (
-                            <View style={styles.lowStockList}>
-                                {products.filter(p => p.stock <= (p.minStockLevel || 5)).slice(0, 3).map(p => (
-                                    <View key={p.id} style={styles.lowStockItem}>
-                                        <View style={styles.lowStockIndicator} />
-                                        <Text style={styles.lowStockName} numberOfLines={1}>{p.name}</Text>
-                                        <Text style={styles.lowStockQty}>{p.stock} left</Text>
-                                    </View>
-                                ))}
-                            </View>
+                    <DashboardCard style={[styles.balanceCardHalf, { backgroundColor: colors.semantic.surface }]}>
+                        <View style={styles.balanceCardHeader}>
+                            <Text style={styles.balanceLabel}>Online Balance</Text>
+                            <Pressable onPress={() => setBalanceVisible(!balanceVisible)} hitSlop={8}>
+                                {balanceVisible ? <Eye size={16} color={colors.text.secondary} /> : <EyeOff size={16} color={colors.text.secondary} />}
+                            </Pressable>
+                        </View>
+                        <Text style={[styles.balanceAmount, { color: '#8B5CF6' }]}>
+                            {balanceVisible ? `${currency} ${upiBalance.toLocaleString()}` : `${currency} ••••••`}
+                        </Text>
+                        <View style={[styles.balanceTag, { backgroundColor: '#8B5CF620' }]}>
+                            <Text style={[styles.balanceTagText, { color: '#8B5CF6' }]}>LIVE</Text>
+                        </View>
+                    </DashboardCard>
+                </View>
+
+                {/* Magic Note Input (Compact) */}
+                <View style={styles.magicContainer}>
+                    <View style={[styles.magicInputWrapper, { borderColor: colors.brand.primary }]}>
+                        <Sparkles size={16} color={colors.brand.primary} style={styles.magicIcon} />
+                        <TextInput
+                            style={styles.magicInput}
+                            placeholder={hints[hintIndex]}
+                            placeholderTextColor={colors.text.muted}
+                            value={magicNote}
+                            onChangeText={setMagicNote}
+                            onSubmitEditing={handleMagicSubmit}
+                        />
+                        {magicNote.length > 0 && (
+                            <Pressable onPress={handleMagicSubmit} style={styles.sendButton}>
+                                <Send size={18} color={colors.brand.primary} />
+                            </Pressable>
                         )}
-
-                        <Pressable onPress={() => navigation.navigate('Inventory')} style={styles.viewInventoryBtnContainer}>
-                            <Text style={styles.viewInventoryBtn}>Manage Inventory →</Text>
-                        </Pressable>
                     </View>
+                </View>
 
-                    {/* Separate Cash and UPI Received Cards */}
-                    <View style={styles.receivedRow}>
-                        <View style={[styles.receivedCard, styles.cashCard]}>
-                            <Text style={styles.cardLabel}>Cash Received</Text>
-                            <Text style={styles.cardAmountBlue}>
+                {/* Stats Grid */}
+                <View style={styles.statsGrid}>
+                    <View style={styles.statsRow}>
+                        <DashboardCard style={styles.statCard}>
+                            <Text style={styles.statLabel}>Today's Sales</Text>
+                            <Text style={styles.cardAmountGreen}>
+                                {currency} {todaySales.toLocaleString()}
+                            </Text>
+                        </DashboardCard>
+                        <DashboardCard style={styles.statCard}>
+                            <Text style={styles.statLabel}>Expenses</Text>
+                            <Text style={styles.cardAmountRed}>
+                                {currency} {todayExpenses.toLocaleString()}
+                            </Text>
+                        </DashboardCard>
+                    </View>
+                    <View style={styles.statsRow}>
+                        <DashboardCard style={styles.statCard}>
+                            <Text style={styles.statLabel}>Cash In</Text>
+                            <Text style={[styles.cardAmountBlue, { fontSize: 18 }]}>
                                 {currency} {todayCashReceived.toLocaleString()}
                             </Text>
-                        </View>
-                        <View style={[styles.receivedCard, styles.upiCard]}>
-                            <Text style={styles.cardLabel}>UPI Received</Text>
-                            <Text style={styles.cardAmountPurple}>
+                        </DashboardCard>
+                        <DashboardCard style={styles.statCard}>
+                            <Text style={styles.statLabel}>UPI In</Text>
+                            <Text style={[styles.cardAmountPurple, { fontSize: 18 }]}>
                                 {currency} {todayUPIReceived.toLocaleString()}
                             </Text>
-                        </View>
+                        </DashboardCard>
                     </View>
+                </View>
 
-                    <View style={styles.balanceCard}>
-                        <View>
-                            <Text style={styles.balanceLabel}>Total Balance</Text>
-                            <Text style={styles.balanceAmount}>
-                                {currency} {Math.abs(balance).toLocaleString()}
-                                {balance < 0 && ' (Deficit)'}
-                            </Text>
+                {/* Spacer to push Swipeable Section to bottom */}
+                <View style={{ flex: 1 }} />
+
+                {/* Swipeable Bottom Section */}
+                <View style={styles.swipeSection}>
+                    <ScrollView
+                        horizontal
+                        pagingEnabled
+                        showsHorizontalScrollIndicator={false}
+                        onScroll={handleScroll}
+                        scrollEventThrottle={16}
+                        contentContainerStyle={styles.swipeContent}
+                        decelerationRate="fast"
+                        snapToInterval={width} // Snap to screen width
+                    >
+                        {/* 1. Quick Actions Card */}
+                        <View style={{ width: width, paddingHorizontal: tokens.spacing.md }}>
+                            <DashboardCard title="Quick Actions" icon={<Zap size={20} color={colors.brand.primary} />}>
+                                <View style={styles.quickActionsGrid}>
+                                    {quickActions.map((action, index) => (
+                                        <Pressable
+                                            key={index}
+                                            style={styles.quickActionItem}
+                                            onPress={() => navigation.navigate(action.screen)}
+                                        >
+                                            <View style={[styles.quickActionIcon, { backgroundColor: colors.semantic.soft }]}>
+                                                {action.icon}
+                                            </View>
+                                            <Text style={styles.quickActionLabel}>{action.label}</Text>
+                                        </Pressable>
+                                    ))}
+                                    <Pressable
+                                        style={styles.quickActionItem}
+                                        onPress={handleExportToday}
+                                    >
+                                        <View style={[styles.quickActionIcon, { backgroundColor: colors.semantic.soft }]}>
+                                            {isExporting ? <ActivityIndicator size="small" color={colors.brand.primary} /> : <FileText size={24} color={colors.brand.primary} />}
+                                        </View>
+                                        <Text style={styles.quickActionLabel}>Report</Text>
+                                    </Pressable>
+                                </View>
+                            </DashboardCard>
                         </View>
-                        <View style={styles.balanceTag}>
-                            <Text style={styles.balanceTagText}>LIVE</Text>
-                        </View>
-                    </View>
 
-                    {/* Recent Invoices / Activity */}
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Recent Invoices</Text>
-                        <Pressable onPress={() => navigation.navigate('Sales')}>
-                            <Text style={styles.seeAllText}>See All</Text>
-                        </Pressable>
-                    </View>
-
-                    <View style={styles.activityList}>
-                        {sales.slice(-3).reverse().map((sale, index) => (
-                            <Pressable
-                                key={sale.id}
-                                style={[styles.activityItem, index === 2 && { borderBottomWidth: 0 }]}
-                                onPress={() => navigation.navigate('Sales', { highlightId: sale.id })}
+                        {/* 2. Recent Activity Card */}
+                        <View style={{ width: width, paddingHorizontal: tokens.spacing.md }}>
+                            <DashboardCard
+                                title="Recent Activity"
+                                icon={<FileText size={20} color={colors.brand.primary} />}
+                                rightAction={
+                                    <Pressable onPress={() => navigation.navigate('Sales')}>
+                                        <Text style={styles.seeAllText}>See All</Text>
+                                    </Pressable>
+                                }
                             >
-                                <View style={styles.activityIcon}>
-                                    <FileText size={20} color={colors.brand.primary} />
+                                <View style={styles.activityList}>
+                                    {sales.slice(-3).reverse().map((sale, index) => (
+                                        <Pressable
+                                            key={sale.id}
+                                            style={[styles.activityItem, index === 2 && { borderBottomWidth: 0 }]}
+                                            onPress={() => navigation.navigate('Sales', { highlightId: sale.id })}
+                                        >
+                                            <View style={styles.activityIcon}>
+                                                <FileText size={20} color={colors.brand.primary} />
+                                            </View>
+                                            <View style={styles.activityMain}>
+                                                <Text style={styles.activityName}>{sale.customerName || 'Walk-in'}</Text>
+                                                <Text style={styles.activityDate}>{sale.date}</Text>
+                                            </View>
+                                            <Text style={styles.activityAmount}>{currency} {sale.totalAmount.toLocaleString()}</Text>
+                                        </Pressable>
+                                    ))}
+                                    {sales.length === 0 && (
+                                        <Text style={styles.emptyActivity}>No recent invoices</Text>
+                                    )}
                                 </View>
-                                <View style={styles.activityMain}>
-                                    <Text style={styles.activityName}>{sale.customerName || 'Walk-in'}</Text>
-                                    <Text style={styles.activityDate}>{sale.date}</Text>
-                                </View>
-                                <Text style={styles.activityAmount}>{currency} {sale.totalAmount.toLocaleString()}</Text>
-                            </Pressable>
-                        ))}
-                        {sales.length === 0 && (
-                            <Text style={styles.emptyActivity}>No recent invoices</Text>
-                        )}
-                    </View>
+                            </DashboardCard>
+                        </View>
 
-                    {/* Quick Actions */}
-                    <Text style={styles.sectionTitle}>Quick Actions</Text>
-                    <View style={styles.quickActions}>
-                        {quickActions.map((action, index) => (
-                            <QuickActionCard
-                                key={index}
-                                icon={action.icon}
-                                label={action.label}
-                                onPress={() => navigation.navigate(action.screen)}
-                                colors={colors}
+                        {/* 3. Inventory / Stock Alerts */}
+                        <View style={{ width: width, paddingHorizontal: tokens.spacing.md }}>
+                            <DashboardCard
+                                title="Stock Alerts"
+                                icon={<AlertCircle size={20} color={colors.semantic.error || '#EF4444'} />}
+                                rightAction={
+                                    <Pressable onPress={() => navigation.navigate('Inventory')}>
+                                        <Text style={styles.seeAllText}>Manage</Text>
+                                    </Pressable>
+                                }
+                            >
+                                {lowStockItems > 0 ? (
+                                    <View style={styles.lowStockList}>
+                                        {products.filter(p => p.stock <= (p.minStockLevel || 5)).slice(0, 3).map(p => (
+                                            <View key={p.id} style={styles.lowStockItem}>
+                                                <View style={styles.lowStockIndicator} />
+                                                <Text style={styles.lowStockName} numberOfLines={1}>{p.name}</Text>
+                                                <Text style={styles.lowStockQty}>{p.stock} left</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                ) : (
+                                    <View style={[styles.emptyActivity, { paddingVertical: tokens.spacing.lg }]}>
+                                        <Check size={32} color={colors.semantic.success} style={{ alignSelf: 'center', marginBottom: 8 }} />
+                                        <Text style={{ color: colors.text.secondary }}>All stocks are healthy!</Text>
+                                    </View>
+                                )}
+                            </DashboardCard>
+                        </View>
+                    </ScrollView>
+
+                    {/* Pagination Dots */}
+                    <View style={styles.paginationDots}>
+                        {[0, 1, 2].map((_, i) => (
+                            <View
+                                key={i}
+                                style={[
+                                    styles.dot,
+                                    pageIndex === i ? { backgroundColor: colors.brand.primary, width: 20 } : { backgroundColor: colors.border.default }
+                                ]}
                             />
                         ))}
                     </View>
-                </ScrollView>
-            </Animated.View>
+                </View>
 
-            {/* Preview Modal */}
+            </View>
+
+            {/* Preview Modal (Kept as is) */}
             <Modal visible={showPreview} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <Pressable style={styles.modalBackdrop} onPress={() => setShowPreview(false)} />
@@ -528,20 +509,9 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: tokens.spacing.md,
+        paddingBottom: tokens.spacing.md, // Add padding at bottom
     },
-    scrollContent: {
-        paddingBottom: 100, // Increased for floating navbar
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        fontSize: tokens.typography.sizes.lg,
-        color: colors.text.secondary,
-        fontFamily: tokens.typography.fontFamily.medium,
-    },
+    // Header
     header: {
         paddingTop: tokens.spacing.lg,
         paddingBottom: tokens.spacing.md,
@@ -552,166 +522,189 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         alignItems: 'center',
     },
     settingsIcon: {
-        padding: 10,
+        padding: 8,
+        backgroundColor: colors.semantic.surface,
+        borderRadius: 20,
     },
-    magicBarContainer: {
-        marginBottom: tokens.spacing.lg,
+    greeting: {
+        fontSize: tokens.typography.sizes.sm,
+        color: colors.text.secondary,
+        marginBottom: 2,
+        fontFamily: tokens.typography.fontFamily.regular,
+    },
+    title: {
+        fontSize: tokens.typography.sizes.xl,
+        color: colors.brand.secondary,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+
+    // Balance Row
+    balanceRow: {
+        flexDirection: 'row',
+        marginBottom: tokens.spacing.md,
+        gap: 12,
+    },
+    balanceCardHalf: {
+        flex: 1,
+        marginBottom: 0, // Override default card margin
+        padding: 12,
+        minHeight: 100,
+        justifyContent: 'space-between',
+        ...tokens.shadow.card,
+        borderWidth: 1,
+        borderColor: colors.border.default,
+    },
+    balanceLabel: {
+        fontSize: 12,
+        color: colors.text.secondary,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginBottom: 4,
+    },
+    balanceCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    balanceAmount: {
+        fontSize: 20,
+        fontFamily: tokens.typography.fontFamily.bold,
+        letterSpacing: -0.5,
+    },
+    balanceTag: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        marginTop: 8,
+    },
+    balanceTagText: {
+        fontSize: 9,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+
+    // Magic Input
+    magicContainer: {
+        marginBottom: tokens.spacing.md,
     },
     magicInputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: colors.semantic.surface,
-        borderRadius: 20,
-        paddingHorizontal: tokens.spacing.md,
-        height: 56,
-        ...tokens.shadow.card,
+        borderRadius: 16,
+        paddingHorizontal: 12,
+        height: 50,
         borderWidth: 1,
-        borderColor: colors.brand.primary + '33',
     },
     magicIcon: {
-        marginRight: tokens.spacing.sm,
+        marginRight: 8,
     },
     magicInput: {
         flex: 1,
-        fontSize: 15,
+        fontSize: 14,
         color: colors.text.primary,
         fontFamily: tokens.typography.fontFamily.medium,
     },
     sendButton: {
         padding: 8,
     },
-    greeting: {
-        fontSize: tokens.typography.sizes.md,
-        color: colors.text.secondary,
-        marginBottom: tokens.spacing.xxs,
-        fontFamily: tokens.typography.fontFamily.regular,
+
+    // Stats Grid
+    statsGrid: {
+        gap: 8,
+        marginBottom: tokens.spacing.md,
     },
-    title: {
-        fontSize: tokens.typography.sizes.xxl,
-        color: colors.brand.secondary,
-        fontFamily: tokens.typography.fontFamily.bold,
-    },
-    tagline: {
-        fontSize: tokens.typography.sizes.sm,
-        color: colors.text.muted,
-        fontStyle: 'italic',
-        fontFamily: tokens.typography.fontFamily.regular,
-    },
-    sectionHeader: {
+    statsRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginTop: tokens.spacing.lg,
-        marginBottom: tokens.spacing.sm,
+        gap: 8,
     },
-    sectionTitle: {
-        fontSize: tokens.typography.sizes.lg,
-        color: colors.text.primary,
-        fontFamily: tokens.typography.fontFamily.semibold,
-    },
-    exportTodayBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        backgroundColor: colors.brand.primary + '15',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 12,
-    },
-    exportTodayText: {
-        fontSize: 12,
-        color: colors.brand.primary,
-        fontFamily: tokens.typography.fontFamily.bold,
-    },
-    summaryCard: {
-        backgroundColor: colors.semantic.surface,
-        borderRadius: tokens.radius.lg,
-        padding: tokens.spacing.md,
-        marginBottom: 14,
-        ...tokens.shadow.card,
-    },
-    receivedRow: {
-        flexDirection: 'row',
-        gap: 12,
-        marginBottom: 14,
-    },
-    receivedCard: {
+    statCard: {
         flex: 1,
+        marginBottom: 0,
+        padding: 12,
         backgroundColor: colors.semantic.surface,
-        borderRadius: tokens.radius.lg,
-        padding: tokens.spacing.md,
-        ...tokens.shadow.card,
     },
-    cashCard: {
-        borderLeftWidth: 3,
-        borderLeftColor: '#2196F3',
-    },
-    upiCard: {
-        borderLeftWidth: 3,
-        borderLeftColor: '#9C27B0',
-    },
-    cardLabel: {
-        fontSize: tokens.typography.sizes.sm,
+    statLabel: {
+        fontSize: 11,
         color: colors.text.secondary,
-        marginBottom: tokens.spacing.xxs,
-        fontFamily: tokens.typography.fontFamily.regular,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginBottom: 2,
     },
     cardAmountGreen: {
-        fontSize: tokens.typography.sizes.xl,
+        fontSize: 16,
         color: colors.semantic.success,
         fontFamily: tokens.typography.fontFamily.bold,
     },
     cardAmountRed: {
-        fontSize: tokens.typography.sizes.xl,
+        fontSize: 16,
         color: colors.brand.primary,
         fontFamily: tokens.typography.fontFamily.bold,
     },
     cardAmountBlue: {
-        fontSize: tokens.typography.sizes.lg,
-        color: '#6366F1', // Using Indigo
+        fontSize: 16,
+        color: '#6366F1',
         fontFamily: tokens.typography.fontFamily.bold,
     },
     cardAmountPurple: {
-        fontSize: tokens.typography.sizes.lg,
-        color: '#8B5CF6', // Modern Violet
+        fontSize: 16,
+        color: '#8B5CF6',
         fontFamily: tokens.typography.fontFamily.bold,
     },
-    inventoryCard: {
-        backgroundColor: colors.semantic.surface,
-        borderRadius: tokens.radius.lg,
-        padding: tokens.spacing.md,
-        marginBottom: 14,
-        ...tokens.shadow.card,
-        borderWidth: 1,
-        borderColor: colors.border.default,
+
+    // Swipe Section
+    swipeSection: {
+        marginBottom: 0,
+        marginHorizontal: -tokens.spacing.md,
     },
-    inventoryHeader: {
+    swipeContent: {
+        paddingBottom: 2,
+    },
+    paginationDots: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 12,
+        justifyContent: 'center',
+        gap: 6,
+        marginTop: 8,
+        marginBottom: 8,
     },
-    lowStockBadgeLarge: {
-        backgroundColor: '#FEF2F2',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+    dot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+
+    // Quick Actions Grid (inside card)
+    quickActionsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+    },
+    quickActionItem: {
+        width: '48%', // roughly half
+        backgroundColor: colors.semantic.background,
+        padding: 12,
         borderRadius: 12,
         alignItems: 'center',
+        flexDirection: 'row',
+        gap: 8,
+    },
+    quickActionIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: '#FEE2E2',
     },
-    lowStockTitle: {
-        fontSize: 16,
-        color: '#DC2626',
-        fontFamily: tokens.typography.fontFamily.bold,
+    quickActionLabel: {
+        fontSize: 14,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.medium,
     },
-    lowStockSub: {
-        fontSize: 8,
-        color: '#DC2626',
-        fontFamily: tokens.typography.fontFamily.bold,
-        textTransform: 'uppercase',
+    seeAllText: {
+        fontSize: 13,
+        color: colors.brand.primary,
+        fontFamily: tokens.typography.fontFamily.semibold,
     },
+
+    // Inventory List additional styles
     lowStockList: {
         marginTop: 4,
         marginBottom: 12,
@@ -742,60 +735,109 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         color: '#DC2626',
         fontFamily: tokens.typography.fontFamily.bold,
     },
-    inventoryMain: {
-        fontSize: 20,
-        color: colors.brand.secondary,
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        padding: 20,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    modalContent: {
+        width: '100%',
+    },
+    previewCard: {
+        backgroundColor: colors.semantic.surface,
+        borderRadius: 24,
+        padding: 20,
+        ...tokens.shadow.floating,
+    },
+    previewHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+    },
+    iconCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: colors.brand.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    previewTitle: {
+        fontSize: 18,
         fontFamily: tokens.typography.fontFamily.bold,
-        marginTop: 2,
+        color: colors.text.primary,
     },
-    viewInventoryBtnContainer: {
-        marginTop: 4,
+    previewDetails: {
+        backgroundColor: colors.semantic.background,
+        borderRadius: 16,
+        padding: 16,
+        gap: 12,
     },
-    viewInventoryBtn: {
-        fontSize: 13,
-        color: colors.brand.primary,
-        fontFamily: tokens.typography.fontFamily.semibold,
-    },
-    balanceCard: {
-        backgroundColor: colors.brand.secondary,
-        borderRadius: tokens.radius.xl,
-        padding: tokens.spacing.lg,
-        marginBottom: tokens.spacing.md,
+    detailRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        ...tokens.shadow.floating,
     },
-    balanceLabel: {
-        fontSize: tokens.typography.sizes.sm,
-        color: '#94A3B8',
-        marginBottom: tokens.spacing.xxs,
+    detailLabel: {
+        fontSize: 14,
+        color: colors.text.secondary,
         fontFamily: tokens.typography.fontFamily.medium,
     },
-    balanceAmount: {
-        fontSize: tokens.typography.sizes.xxl,
-        color: colors.text.inverse,
-        fontFamily: tokens.typography.fontFamily.bold,
-        letterSpacing: -0.5,
-    },
-    balanceTag: {
-        backgroundColor: 'rgba(16, 185, 129, 0.2)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(16, 185, 129, 0.3)',
-    },
-    balanceTagText: {
-        fontSize: 10,
-        color: '#10B981',
-        fontFamily: tokens.typography.fontFamily.bold,
-    },
-    seeAllText: {
-        fontSize: 13,
-        color: colors.brand.primary,
+    detailValue: {
+        fontSize: 14,
+        color: colors.text.primary,
         fontFamily: tokens.typography.fontFamily.semibold,
     },
+    previewButtons: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 20,
+    },
+    cancelPreview: {
+        flex: 1,
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: colors.semantic.background,
+        alignItems: 'center',
+    },
+    cancelText: {
+        fontSize: 15,
+        fontFamily: tokens.typography.fontFamily.semibold,
+        color: colors.text.secondary,
+    },
+    confirmPreview: {
+        flex: 2,
+        flexDirection: 'row',
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: colors.brand.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    confirmText: {
+        fontSize: 15,
+        fontFamily: tokens.typography.fontFamily.semibold,
+        color: '#fff',
+    },
+    // Loading
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: tokens.typography.sizes.lg,
+        color: colors.text.secondary,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    // Activity List
     activityList: {
         backgroundColor: colors.semantic.surface,
         borderRadius: tokens.radius.lg,
@@ -845,107 +887,6 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         paddingVertical: tokens.spacing.xl,
         color: colors.text.muted,
         fontFamily: tokens.typography.fontFamily.regular,
-    },
-    quickActions: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: tokens.spacing.xl,
-        gap: 12,
-    },
-    // Preview Modal Styles
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        justifyContent: 'center',
-        padding: tokens.spacing.xl,
-    },
-    modalBackdrop: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    modalContent: {
-        width: '100%',
-    },
-    previewCard: {
-        backgroundColor: colors.semantic.surface,
-        borderRadius: 24,
-        padding: tokens.spacing.lg,
-        ...tokens.shadow.modal,
-    },
-    previewHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: tokens.spacing.lg,
-    },
-    iconCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.brand.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    previewTitle: {
-        fontSize: 20,
-        fontFamily: tokens.typography.fontFamily.bold,
-        color: colors.text.primary,
-        flex: 1,
-        marginLeft: 12,
-    },
-    previewDetails: {
-        backgroundColor: colors.semantic.background,
-        borderRadius: 16,
-        padding: tokens.spacing.md,
-        marginBottom: tokens.spacing.xl,
-    },
-    detailRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border.default,
-    },
-    detailLabel: {
-        fontSize: 14,
-        color: colors.text.secondary,
-        fontFamily: tokens.typography.fontFamily.regular,
-    },
-    detailValue: {
-        fontSize: 16,
-        color: colors.text.primary,
-        fontFamily: tokens.typography.fontFamily.semibold,
-    },
-    previewButtons: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    cancelPreview: {
-        flex: 1,
-        height: 52,
-        borderRadius: 16,
-        borderWidth: 1.5,
-        borderColor: colors.border.default,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    confirmPreview: {
-        flex: 2,
-        height: 52,
-        borderRadius: 16,
-        backgroundColor: colors.brand.primary,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    cancelText: {
-        fontSize: 16,
-        fontFamily: tokens.typography.fontFamily.semibold,
-        color: colors.text.secondary,
-    },
-    confirmText: {
-        fontSize: 16,
-        fontFamily: tokens.typography.fontFamily.semibold,
-        color: '#fff',
     },
 });
 

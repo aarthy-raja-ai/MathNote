@@ -8,3 +8,6 @@ export { ContactsScreen } from './ContactsScreen';
 export { InventoryScreen } from './InventoryScreen';
 export { LockScreen } from './LockScreen';
 export { ReturnsScreen } from './ReturnsScreen';
+export { BusinessProfileScreen } from './BusinessProfileScreen';
+export { InvoicePreviewScreen } from './InvoicePreviewScreen';
+

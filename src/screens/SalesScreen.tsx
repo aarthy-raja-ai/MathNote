@@ -17,13 +17,13 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Pencil, Trash2, Share2, FileText, RotateCcw, TrendingUp } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Pencil, Trash2, Share2, FileText, RotateCcw, TrendingUp, Percent } from 'lucide-react-native';
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
 import { Sale, Product, SaleItem } from '../utils/storage';
-import { generateInvoicePDF } from '../utils/invoiceGenerator';
 import { evaluateMath } from '../utils/mathEvaluator';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -68,7 +68,8 @@ const segmentStyles = StyleSheet.create({
 });
 
 export const SalesScreen: React.FC = () => {
-    const { sales, addSale, updateSale, deleteSale, addReturn, settings, contacts, products, returns } = useApp();
+    const navigation = useNavigation<any>();
+    const { sales, addSale, updateSale, deleteSale, addReturn, settings, updateSettings, contacts, products, returns } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -81,11 +82,14 @@ export const SalesScreen: React.FC = () => {
     const [note, setNote] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
     const [selectedItems, setSelectedItems] = useState<SaleItem[]>([]);
+    const [discountPercent, setDiscountPercent] = useState('');
 
     // Date filter state
     const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [dateInputValue, setDateInputValue] = useState('');
+
+
 
     const slideAnim = useRef(new Animated.Value(100)).current;
     const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
@@ -135,20 +139,28 @@ export const SalesScreen: React.FC = () => {
         setNote('');
         setPaymentMethod('Cash');
         setSelectedItems([]);
+        setDiscountPercent('');
         setModalVisible(true);
     };
 
     const handleEdit = (sale: Sale) => {
         setEditingSale(sale);
         setCustomerName(sale.customerName || '');
-        // Handle legacy sales that only have 'amount' field
-        const total = sale.totalAmount ?? sale.paidAmount ?? 0;
+        // Use subtotal if available (new format), otherwise use totalAmount
+        const subtotal = sale.subtotal || sale.totalAmount || 0;
         const paid = sale.paidAmount ?? sale.totalAmount ?? 0;
-        setTotalAmount(total.toString());
+        setTotalAmount(subtotal.toString());
         setPaidAmount(paid.toString());
         setNote(sale.note || '');
         setPaymentMethod(sale.paymentMethod || 'Cash');
         setSelectedItems(sale.items || []);
+        // Restore discount percentage
+        if (sale.discountTotal && sale.subtotal && sale.subtotal > 0) {
+            const discountPct = (sale.discountTotal / sale.subtotal) * 100;
+            setDiscountPercent(discountPct > 0 ? discountPct.toString() : '');
+        } else {
+            setDiscountPercent('');
+        }
         setModalVisible(true);
     };
 
@@ -223,50 +235,89 @@ export const SalesScreen: React.FC = () => {
     };
 
     const handleSave = async () => {
-        let parsedTotal = parseFloat(totalAmount);
+        let parsedSubtotal = parseFloat(totalAmount);
 
         // If parsing fails, try math evaluation
-        if (isNaN(parsedTotal)) {
+        if (isNaN(parsedSubtotal)) {
             const mathResult = evaluateMath(totalAmount);
-            if (mathResult !== null) parsedTotal = mathResult;
+            if (mathResult !== null) parsedSubtotal = mathResult;
         }
 
-        const parsedPaid = paidAmount ? parseFloat(paidAmount) : parsedTotal;
-
-        if (isNaN(parsedTotal) || parsedTotal <= 0) {
+        if (isNaN(parsedSubtotal) || parsedSubtotal <= 0) {
             Alert.alert('Error', 'Please enter a valid total amount');
             return;
         }
-        if (parsedPaid > parsedTotal) {
+
+        // Calculate billing amounts
+        const discountPct = parseFloat(discountPercent) || 0;
+        const discountAmt = parsedSubtotal * discountPct / 100;
+        const taxableAmount = parsedSubtotal - discountAmt;
+
+        let taxTotal = 0, cgst = 0, sgst = 0, igst = 0;
+        if (settings.gstEnabled) {
+            const rate = settings.gstRate || 18;
+            if (settings.gstType === 'inter') {
+                igst = taxableAmount * rate / 100;
+                taxTotal = igst;
+            } else {
+                cgst = taxableAmount * (rate / 2) / 100;
+                sgst = cgst;
+                taxTotal = cgst + sgst;
+            }
+        }
+
+        const grandTotal = taxableAmount + taxTotal;
+        const parsedPaid = paidAmount ? parseFloat(paidAmount) : grandTotal;
+
+        if (parsedPaid > grandTotal) {
             Alert.alert('Error', 'Paid amount cannot exceed total amount');
             return;
         }
-        if (parsedPaid < parsedTotal && !customerName.trim()) {
+        if (parsedPaid < grandTotal && !customerName.trim()) {
             Alert.alert('Error', 'Customer name is required for partial payments');
             return;
         }
 
+        // Generate invoice number for new sales
+        let invoiceNumber: string | undefined;
+        if (!editingSale) {
+            const prefix = settings.invoicePrefix || 'INV';
+            const nextNum = (settings.lastInvoiceNumber || 0) + 1;
+            invoiceNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
+        }
+
+        const saleData = {
+            customerName: customerName.trim(),
+            totalAmount: grandTotal,
+            paidAmount: parsedPaid,
+            note,
+            paymentMethod,
+            items: selectedItems,
+            // Billing details
+            subtotal: parsedSubtotal,
+            discountTotal: discountAmt,
+            taxTotal,
+            cgst: cgst || undefined,
+            sgst: sgst || undefined,
+            igst: igst || undefined,
+            invoiceNumber: editingSale ? editingSale.invoiceNumber : invoiceNumber,
+        };
+
         if (editingSale) {
-            await updateSale(editingSale.id, {
-                customerName: customerName.trim(),
-                totalAmount: parsedTotal,
-                paidAmount: parsedPaid,
-                note,
-                paymentMethod,
-                items: selectedItems,
-            });
+            await updateSale(editingSale.id, saleData);
         } else {
             await addSale({
                 date: today,
-                customerName: customerName.trim(),
-                totalAmount: parsedTotal,
-                paidAmount: parsedPaid,
-                note,
-                paymentMethod,
-                items: selectedItems,
+                ...saleData,
             });
+            // Increment invoice number counter
+            await updateSettings({ lastInvoiceNumber: (settings.lastInvoiceNumber || 0) + 1 });
         }
-        closeModal();
+
+        // Show success message and close modal
+        Alert.alert('Success', editingSale ? 'Sale updated successfully!' : 'Invoice saved successfully!', [
+            { text: 'OK', onPress: () => closeModal() }
+        ]);
     };
 
     // Auto-fill paid amount when total changes
@@ -308,6 +359,11 @@ export const SalesScreen: React.FC = () => {
         return { total, paid };
     };
 
+    // Navigate to invoice preview
+    const handleSharePress = (sale: Sale) => {
+        navigation.navigate('InvoicePreview', { sale });
+    };
+
     // Filter sales based on selected filter and date
     const filteredSales = filterByDateRange(sales, dateFilter, selectedDate)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -321,6 +377,7 @@ export const SalesScreen: React.FC = () => {
 
         // Build subtitle parts
         const subtitleParts: string[] = [];
+        if (item.invoiceNumber) subtitleParts.push(item.invoiceNumber);
         if (item.paymentMethod) subtitleParts.push(item.paymentMethod);
         if (isPartial) subtitleParts.push(`Due: ${currency}${remaining}`);
         if (!isToday) subtitleParts.push(new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
@@ -343,7 +400,7 @@ export const SalesScreen: React.FC = () => {
                             {currency} {total.toLocaleString()}
                         </Text>
                         <Pressable
-                            onPress={() => generateInvoicePDF(item, settings)}
+                            onPress={() => handleSharePress(item)}
                             style={styles.shareButton}
                         >
                             <Share2 size={18} color={colors.brand.primary} />
@@ -462,6 +519,47 @@ export const SalesScreen: React.FC = () => {
                                     onSelect={(contact) => setCustomerName(contact.name)}
                                 />
 
+                                {/* Recent Customers Quick Select */}
+                                {(() => {
+                                    const recentCustomers = Array.from(new Set(
+                                        sales
+                                            .filter(s => s.customerName && s.customerName.trim())
+                                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                            .map(s => s.customerName!.trim())
+                                    )).slice(0, 5);
+
+                                    if (recentCustomers.length === 0) return null;
+
+                                    return (
+                                        <View style={styles.recentCustomersContainer}>
+                                            <Text style={[styles.recentLabel, { color: colors.text.muted }]}>Recent:</Text>
+                                            <ScrollView
+                                                horizontal
+                                                showsHorizontalScrollIndicator={false}
+                                                contentContainerStyle={styles.recentChipsRow}
+                                            >
+                                                {recentCustomers.map((name) => (
+                                                    <Pressable
+                                                        key={name}
+                                                        style={[
+                                                            styles.recentChip,
+                                                            { backgroundColor: customerName === name ? colors.brand.primary : colors.semantic.soft }
+                                                        ]}
+                                                        onPress={() => setCustomerName(name)}
+                                                    >
+                                                        <Text style={[
+                                                            styles.recentChipText,
+                                                            { color: customerName === name ? colors.text.inverse : colors.text.primary }
+                                                        ]}>
+                                                            {name}
+                                                        </Text>
+                                                    </Pressable>
+                                                ))}
+                                            </ScrollView>
+                                        </View>
+                                    );
+                                })()}
+
                                 <Input
                                     label="Customer Name"
                                     placeholder="Enter customer name (optional)"
@@ -512,6 +610,82 @@ export const SalesScreen: React.FC = () => {
                                     onChangeText={handleTotalChange}
                                 />
                                 <Input
+                                    label="Discount (%)"
+                                    placeholder="Enter discount percentage"
+                                    keyboardType="numeric"
+                                    value={discountPercent}
+                                    onChangeText={setDiscountPercent}
+                                />
+
+                                {/* Price Breakdown */}
+                                {totalAmount && parseFloat(totalAmount) > 0 && (
+                                    <View style={[styles.priceBreakdown, { backgroundColor: colors.semantic.soft }]}>
+                                        <View style={styles.breakdownRow}>
+                                            <Text style={[styles.breakdownLabel, { color: colors.text.secondary }]}>Subtotal</Text>
+                                            <Text style={[styles.breakdownValue, { color: colors.text.primary }]}>
+                                                {currency}{parseFloat(totalAmount).toLocaleString()}
+                                            </Text>
+                                        </View>
+                                        {discountPercent && parseFloat(discountPercent) > 0 && (
+                                            <View style={styles.breakdownRow}>
+                                                <Text style={[styles.breakdownLabel, { color: '#28a745' }]}>Discount ({discountPercent}%)</Text>
+                                                <Text style={[styles.breakdownValue, { color: '#28a745' }]}>
+                                                    -{currency}{(parseFloat(totalAmount) * parseFloat(discountPercent) / 100).toLocaleString()}
+                                                </Text>
+                                            </View>
+                                        )}
+                                        {settings.gstEnabled && (() => {
+                                            const subtotal = parseFloat(totalAmount) || 0;
+                                            const discountAmt = discountPercent ? subtotal * parseFloat(discountPercent) / 100 : 0;
+                                            const taxable = subtotal - discountAmt;
+                                            const rate = settings.gstRate || 18;
+                                            if (settings.gstType === 'inter') {
+                                                const igst = taxable * rate / 100;
+                                                return (
+                                                    <View style={styles.breakdownRow}>
+                                                        <Text style={[styles.breakdownLabel, { color: colors.text.muted }]}>IGST ({rate}%)</Text>
+                                                        <Text style={[styles.breakdownValue, { color: colors.text.secondary }]}>
+                                                            +{currency}{igst.toLocaleString()}
+                                                        </Text>
+                                                    </View>
+                                                );
+                                            } else {
+                                                const halfRate = rate / 2;
+                                                const cgst = taxable * halfRate / 100;
+                                                return (
+                                                    <>
+                                                        <View style={styles.breakdownRow}>
+                                                            <Text style={[styles.breakdownLabel, { color: colors.text.muted }]}>CGST ({halfRate}%)</Text>
+                                                            <Text style={[styles.breakdownValue, { color: colors.text.secondary }]}>
+                                                                +{currency}{cgst.toLocaleString()}
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.breakdownRow}>
+                                                            <Text style={[styles.breakdownLabel, { color: colors.text.muted }]}>SGST ({halfRate}%)</Text>
+                                                            <Text style={[styles.breakdownValue, { color: colors.text.secondary }]}>
+                                                                +{currency}{cgst.toLocaleString()}
+                                                            </Text>
+                                                        </View>
+                                                    </>
+                                                );
+                                            }
+                                        })()}
+                                        <View style={[styles.breakdownRow, styles.grandTotalRow]}>
+                                            <Text style={[styles.breakdownLabel, { color: colors.text.primary, fontWeight: 'bold' }]}>Grand Total</Text>
+                                            <Text style={[styles.breakdownValue, { color: colors.brand.primary, fontWeight: 'bold', fontSize: 18 }]}>
+                                                {currency}{(() => {
+                                                    const subtotal = parseFloat(totalAmount) || 0;
+                                                    const discountAmt = discountPercent ? subtotal * parseFloat(discountPercent) / 100 : 0;
+                                                    const taxable = subtotal - discountAmt;
+                                                    const taxAmt = settings.gstEnabled ? taxable * (settings.gstRate || 18) / 100 : 0;
+                                                    return (taxable + taxAmt).toLocaleString();
+                                                })()}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
+
+                                <Input
                                     label="Amount Paid"
                                     placeholder="Leave empty for full payment"
                                     keyboardType="numeric"
@@ -543,6 +717,8 @@ export const SalesScreen: React.FC = () => {
                     </Animated.View>
                 </KeyboardAvoidingView>
             </Modal>
+
+
         </SafeAreaView>
     );
 };
@@ -666,6 +842,72 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     quantityControls: { flexDirection: 'row', alignItems: 'center' },
     qtyBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
     qtyValue: { width: 30, textAlign: 'center', fontSize: 14, fontFamily: tokens.typography.fontFamily.bold },
+    // Price breakdown styles
+    priceBreakdown: {
+        padding: tokens.spacing.md,
+        borderRadius: tokens.radius.md,
+        marginBottom: tokens.spacing.md,
+    },
+    breakdownRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 6,
+    },
+    breakdownLabel: {
+        fontSize: tokens.typography.sizes.sm,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    breakdownValue: {
+        fontSize: tokens.typography.sizes.md,
+        fontFamily: tokens.typography.fontFamily.semibold,
+    },
+    grandTotalRow: {
+        borderTopWidth: 1,
+        borderTopColor: colors.border.default,
+        marginTop: tokens.spacing.sm,
+        paddingTop: tokens.spacing.sm,
+    },
+    // Recent customers styles
+    recentCustomersContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: tokens.spacing.sm,
+        marginTop: tokens.spacing.xs,
+    },
+    recentLabel: {
+        fontSize: 12,
+        fontFamily: tokens.typography.fontFamily.medium,
+        marginRight: tokens.spacing.sm,
+    },
+    recentChipsRow: {
+        flexDirection: 'row',
+        gap: tokens.spacing.xs,
+    },
+    recentChip: {
+        paddingHorizontal: tokens.spacing.sm,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    recentChipText: {
+        fontSize: 12,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    // Print size selection styles
+    printSizeOption: {
+        padding: tokens.spacing.md,
+        borderRadius: tokens.radius.md,
+        marginBottom: tokens.spacing.sm,
+    },
+    printSizeText: {
+        fontSize: tokens.typography.sizes.md,
+        fontFamily: tokens.typography.fontFamily.semibold,
+    },
+    printSizeSubtext: {
+        fontSize: tokens.typography.sizes.xs,
+        fontFamily: tokens.typography.fontFamily.regular,
+        marginTop: 2,
+    },
 });
 
 export default SalesScreen;

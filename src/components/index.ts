@@ -5,3 +5,4 @@ export { DateFilter, filterByDateRange, getFilterLabel } from './DateFilter';
 export type { DateFilterType } from './DateFilter';
 export { ContactPicker } from './ContactPicker';
 export { ProductPicker } from './ProductPicker';
+export { default as PartyLedger } from './PartyLedger';

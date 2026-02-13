@@ -78,6 +78,9 @@ interface AppContextType extends AppState {
     getCreditPaymentsMade: () => number;       // Money paid for taken credits
     // Credit Payments
     addCreditPayment: (creditId: string, payment: Omit<CreditPayment, 'id'>) => Promise<void>;
+    // Split Balances
+    getCashBalance: () => number;
+    getUPIBalance: () => number;
 }
 
 const defaultSettings: Settings = {
@@ -221,7 +224,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Expenses
     const addExpense = useCallback(async (expense: Omit<Expense, 'id'>) => {
-        const newExpense: Expense = { ...expense, id: generateId() };
+        const newExpense: Expense = {
+            ...expense,
+            id: generateId(),
+            paymentMethod: expense.paymentMethod || 'Cash' // Default to Cash if not provided
+        };
         const newExpenses = [...state.expenses, newExpense];
         await storage.setExpenses(newExpenses);
         setState((prev) => ({ ...prev, expenses: newExpenses }));
@@ -562,6 +569,85 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return totalSales + creditReceived - totalExpenses - creditPaid - totalReturns;
     }, [state.sales, state.expenses, state.credits, state.returns]);
 
+    const getCashBalance = useCallback(() => {
+        // Sales (Cash)
+        const salesCash = state.sales
+            .filter(s => s.paymentMethod === 'Cash')
+            .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
+
+        // Expenses (Cash) - if paymentMethod is undefined/null, assume Cash for now
+        const expensesCash = state.expenses
+            .filter(e => e.paymentMethod === 'Cash' || !e.paymentMethod)
+            .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+
+        // Credit Received (Cash)
+        const creditReceivedCash = state.credits
+            .filter(c => c.type === 'given')
+            .reduce((sum, c) => {
+                const cashPayments = c.payments?.filter(p => p.paymentMode === 'Cash') || [];
+                return sum + cashPayments.reduce((pSum, p) => pSum + p.amount, 0);
+            }, 0);
+
+        // Credit Paid (Cash)
+        const creditPaidCash = state.credits
+            .filter(c => c.type === 'taken')
+            .reduce((sum, c) => {
+                const cashPayments = c.payments?.filter(p => p.paymentMode === 'Cash') || [];
+                return sum + cashPayments.reduce((pSum, p) => pSum + p.amount, 0);
+            }, 0);
+
+        // Returns (Cash) - difficult to track exactly without return payment method, assuming Cash for safety/default
+        // logic: if original sale was cash, return is cash.
+        const returnsCash = state.returns.reduce((sum, r) => {
+            const originalSale = state.sales.find(s => s.id === r.saleId);
+            if (originalSale && originalSale.paymentMethod === 'Cash') {
+                return sum + (r.amount ?? 0);
+            }
+            return sum;
+        }, 0);
+
+        return salesCash + creditReceivedCash - expensesCash - creditPaidCash - returnsCash;
+    }, [state.sales, state.expenses, state.credits, state.returns]);
+
+    const getUPIBalance = useCallback(() => {
+        // Sales (UPI)
+        const salesUPI = state.sales
+            .filter(s => s.paymentMethod === 'UPI')
+            .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
+
+        // Expenses (UPI)
+        const expensesUPI = state.expenses
+            .filter(e => e.paymentMethod === 'UPI')
+            .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+
+        // Credit Received (UPI)
+        const creditReceivedUPI = state.credits
+            .filter(c => c.type === 'given')
+            .reduce((sum, c) => {
+                const upiPayments = c.payments?.filter(p => p.paymentMode === 'UPI') || [];
+                return sum + upiPayments.reduce((pSum, p) => pSum + p.amount, 0);
+            }, 0);
+
+        // Credit Paid (UPI)
+        const creditPaidUPI = state.credits
+            .filter(c => c.type === 'taken')
+            .reduce((sum, c) => {
+                const upiPayments = c.payments?.filter(p => p.paymentMode === 'UPI') || [];
+                return sum + upiPayments.reduce((pSum, p) => pSum + p.amount, 0);
+            }, 0);
+
+        // Returns (UPI)
+        const returnsUPI = state.returns.reduce((sum, r) => {
+            const originalSale = state.sales.find(s => s.id === r.saleId);
+            if (originalSale && originalSale.paymentMethod === 'UPI') {
+                return sum + (r.amount ?? 0);
+            }
+            return sum;
+        }, 0);
+
+        return salesUPI + creditReceivedUPI - expensesUPI - creditPaidUPI - returnsUPI;
+    }, [state.sales, state.expenses, state.credits, state.returns]);
+
     return (
         <AppContext.Provider
             value={{
@@ -594,6 +680,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 deleteProduct,
                 addReturn,
                 deleteReturn,
+                getCashBalance,
+                getUPIBalance,
             }}
         >
             {children}
