@@ -2,6 +2,8 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Credit } from './storage';
 
+const DAILY_SUMMARY_IDENTIFIER = 'daily-summary-notification';
+
 // Configure notification behavior
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -48,7 +50,7 @@ export const notificationService = {
     },
 
     // Schedule a reminder for a pending credit
-    async scheduleCreditReminder(credit: Credit): Promise<string | null> {
+    async scheduleCreditReminder(credit: Credit, currency: string = '₹'): Promise<string | null> {
         if (credit.status === 'paid') return null;
 
         const hasPermission = await this.requestPermissions();
@@ -63,7 +65,7 @@ export const notificationService = {
             const notificationId = await Notifications.scheduleNotificationAsync({
                 content: {
                     title: '💰 Credit Reminder',
-                    body: `${credit.party} owes you ₹${credit.amount.toLocaleString()}`,
+                    body: `${credit.party} owes you ${currency}${credit.amount.toLocaleString()}`,
                     data: { creditId: credit.id },
                     sound: true,
                 },
@@ -92,8 +94,12 @@ export const notificationService = {
 
     // Schedule daily summary reminder
     async scheduleDailySummary(enabled: boolean): Promise<void> {
-        // Cancel existing daily summary
-        await Notifications.cancelAllScheduledNotificationsAsync();
+        // Cancel only the existing daily summary notification, not all notifications
+        try {
+            await Notifications.cancelScheduledNotificationAsync(DAILY_SUMMARY_IDENTIFIER);
+        } catch {
+            // Notification may not exist, that's fine
+        }
 
         if (!enabled) return;
 
@@ -102,6 +108,7 @@ export const notificationService = {
 
         // Schedule for 8 PM daily
         await Notifications.scheduleNotificationAsync({
+            identifier: DAILY_SUMMARY_IDENTIFIER,
             content: {
                 title: '📊 Daily Summary',
                 body: 'Check your daily sales and expenses!',
@@ -117,3 +124,4 @@ export const notificationService = {
 };
 
 export default notificationService;
+

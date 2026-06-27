@@ -30,8 +30,8 @@ const TEMPLATE_OPTIONS: { label: string; value: InvoiceTemplate; desc: string }[
 ];
 
 interface Props {
-    navigation: any;
-    route: {
+    navigation?: any;
+    route?: {
         params: {
             sale: Sale;
         };
@@ -41,7 +41,7 @@ interface Props {
 export const InvoicePreviewScreen: React.FC<Props> = ({ navigation, route }) => {
     const { settings } = useApp();
     const { colors, isDark } = useTheme();
-    const sale = route.params.sale;
+    const sale = route?.params?.sale;
 
     const [selectedSize, setSelectedSize] = useState<InvoicePrintSize>(
         settings.invoicePrintSize || 'A4'
@@ -53,13 +53,17 @@ export const InvoicePreviewScreen: React.FC<Props> = ({ navigation, route }) => 
     const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
 
     const html = useMemo(
-        () => getInvoiceHTML(sale, settings, selectedSize, selectedTemplate),
+        () => sale ? getInvoiceHTML(sale, settings, selectedSize, selectedTemplate) : '',
         [sale, settings, selectedSize, selectedTemplate]
     );
 
     const handleShare = async () => {
-        await generateInvoicePDF(sale, settings, selectedSize, selectedTemplate);
+        if (sale) {
+            await generateInvoicePDF(sale, settings, selectedSize, selectedTemplate);
+        }
     };
+
+    if (!sale) return null;
 
     const currentSizeLabel = SIZE_OPTIONS.find(s => s.value === selectedSize)?.label || 'A4';
     const currentTemplateLabel = TEMPLATE_OPTIONS.find(t => t.value === selectedTemplate)?.label || 'Classic';

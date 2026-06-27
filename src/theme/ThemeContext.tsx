@@ -17,6 +17,8 @@ const darkColors = {
     },
     semantic: {
         success: '#10B981',
+        error: '#EF4444',
+        warning: '#F59E0B',
         soft: '#1E293B',
         background: '#0F172A',
         surface: '#1E293B',

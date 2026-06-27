@@ -87,7 +87,7 @@ export const ExpensesScreen: React.FC = () => {
 
     const handleEdit = (expense: Expense) => {
         setEditingExpense(expense);
-        setAmount(expense.amount.toString());
+        setAmount((expense.amount ?? '').toString());
         setNote(expense.note);
         setCategory(expense.category);
         setVendorName(expense.vendorName || '');
@@ -149,7 +149,7 @@ export const ExpensesScreen: React.FC = () => {
     const filteredExpenses = filterByDateRange(expenses, dateFilter, selectedDate)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalFiltered = filteredExpenses.reduce((sum, e) => sum + (parseFloat(e.amount as any) || 0), 0);
 
     const getCategoryInfo = (catId: string) => {
         return ALL_CATEGORIES.find((c) => c.id === catId) || ALL_CATEGORIES[ALL_CATEGORIES.length - 1];
@@ -197,7 +197,7 @@ export const ExpensesScreen: React.FC = () => {
                             {catInfo.label}
                         </Text>
                         <Text style={styles.listAmount}>
-                            {currency} {item.amount.toLocaleString()}
+                            {currency} {(item.amount || 0).toLocaleString()}
                         </Text>
                     </View>
                 </View>
@@ -464,9 +464,10 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     bottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '85%' },
     handleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
     handleBar: { width: 40, height: 4, backgroundColor: colors.border.default, borderRadius: 2 },
+    sheetScroll: { flex: 1 },
     sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
     modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.md, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
-    categoryLabel: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, marginBottom: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.medium },
+    categoryGroupLabel: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, marginBottom: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.medium },
     categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: tokens.spacing.md },
     categoryItem: { width: '31%', padding: tokens.spacing.xs, marginRight: '2%', marginBottom: tokens.spacing.xs, borderRadius: tokens.radius.sm, backgroundColor: colors.semantic.soft, alignItems: 'center' },
     categorySelected: { backgroundColor: colors.brand.primary },

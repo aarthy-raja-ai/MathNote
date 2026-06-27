@@ -7,9 +7,10 @@ import {
     Pressable,
     TextInput,
 } from 'react-native';
-import { Search, Package, Check, AlertTriangle } from 'lucide-react-native';
+import { Search, Package, Check, AlertTriangle, Maximize } from 'lucide-react-native';
 import { tokens } from '../theme';
 import { Product } from '../utils/storage';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 
 interface ProductPickerProps {
     products: Product[];
@@ -25,11 +26,23 @@ export const ProductPicker: React.FC<ProductPickerProps> = ({
     selectedProducts = [],
 }) => {
     const [search, setSearch] = useState('');
+    const [isScannerVisible, setIsScannerVisible] = useState(false);
 
     const filteredProducts = products.filter((p) =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.category?.toLowerCase().includes(search.toLowerCase())
+        p.category?.toLowerCase().includes(search.toLowerCase()) ||
+        p.barcode?.toLowerCase().includes(search.toLowerCase())
     );
+
+    const handleScan = (data: string) => {
+        setIsScannerVisible(false);
+        const match = products.find(p => p.barcode === data);
+        if (match) {
+            onSelect(match);
+        } else {
+            setSearch(data);
+        }
+    };
 
     const renderItem = ({ item }: { item: Product }) => {
         const isSelected = selectedProducts.includes(item.id);
@@ -84,6 +97,9 @@ export const ProductPicker: React.FC<ProductPickerProps> = ({
                     value={search}
                     onChangeText={setSearch}
                 />
+                <Pressable onPress={() => setIsScannerVisible(true)} style={styles.scanBtn}>
+                    <Maximize size={20} color={colors.brand.primary} />
+                </Pressable>
             </View>
             <FlatList
                 data={filteredProducts}
@@ -99,6 +115,13 @@ export const ProductPicker: React.FC<ProductPickerProps> = ({
                         </Text>
                     </View>
                 }
+            />
+
+            <BarcodeScannerModal
+                visible={isScannerVisible}
+                onClose={() => setIsScannerVisible(false)}
+                onScan={handleScan}
+                colors={colors}
             />
         </View>
     );
@@ -119,6 +142,10 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         fontSize: 14,
         fontFamily: tokens.typography.fontFamily.regular,
+    },
+    scanBtn: {
+        padding: 6,
+        marginLeft: 4,
     },
     list: { paddingRight: tokens.spacing.lg },
     item: {

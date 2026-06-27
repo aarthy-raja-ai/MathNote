@@ -15,7 +15,7 @@ import { PieChart, LineChart } from 'react-native-chart-kit';
 import { FileText, BarChart3, TrendingUp, Calendar, FileSpreadsheet } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import pdfService from '../utils/pdfService';
 import { exportSalesCSV, exportExpensesCSV, exportCreditsCSV, exportAllDataCSV } from '../utils/exportService';
 
@@ -24,7 +24,8 @@ type DateRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ReportsScreen: React.FC = () => {
-    const { sales, expenses, credits, settings } = useApp();
+    const { sales, expenses, credits, settings, products, purchases, returns } = useApp();
+    const { canViewReports } = useAuth();
     const { colors } = useTheme();
     const [range, setRange] = useState<DateRange>('weekly');
     const [isExporting, setIsExporting] = useState(false);
@@ -40,6 +41,20 @@ export const ReportsScreen: React.FC = () => {
         chartAnim.setValue(0);
         Animated.timing(chartAnim, { toValue: 1, duration: tokens.motion.duration.slow, useNativeDriver: false }).start();
     }, [chartAnim, range]);
+
+    if (!canViewReports) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+                    <View style={styles.emptyIconContainer}>
+                        <FileText size={48} color={colors.text.muted} />
+                    </View>
+                    <Text style={styles.title}>Access Denied</Text>
+                    <Text style={styles.subtitle}>You don't have permission to view reports.</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     const getDateRange = () => {
         const now = new Date();
@@ -121,9 +136,9 @@ export const ReportsScreen: React.FC = () => {
         monthSales.forEach(sale => {
             const subtotal = sale.subtotal || sale.totalAmount || 0;
             totalTaxableValue += subtotal;
-            totalCGST += sale.cgstAmount || 0;
-            totalSGST += sale.sgstAmount || 0;
-            totalIGST += sale.igstAmount || 0;
+            totalCGST += sale.cgst || 0;
+            totalSGST += sale.sgst || 0;
+            totalIGST += sale.igst || 0;
         });
 
         return {
@@ -154,6 +169,35 @@ export const ReportsScreen: React.FC = () => {
             .sort((a, b) => b.totalAmount - a.totalAmount)
             .slice(0, 8);
     }, [filteredSales]);
+
+    // Stock Movement Report
+    const stockMovement = useMemo(() => {
+        return products.map(product => {
+            const productPurchases = purchases.reduce((sum, p) => {
+                const item = (p.items || []).find(i => i.productId === product.id);
+                return sum + (item?.quantity || 0);
+            }, 0);
+
+            const productSales = sales.reduce((sum, s) => {
+                const item = (s.items || []).find(i => i.productId === product.id);
+                return sum + (item?.quantity || 0);
+            }, 0);
+
+            const productReturns = returns.reduce((sum, r) => {
+                const item = (r.items || []).find(i => i.productId === product.id);
+                return sum + (item?.quantity || 0);
+            }, 0);
+
+            return {
+                name: product.name,
+                purchased: productPurchases,
+                sold: productSales,
+                returned: productReturns,
+                net: productPurchases - productSales + productReturns,
+                stock: product.stock
+            };
+        }).sort((a, b) => b.sold - a.sold);
+    }, [products, sales, purchases, returns]);
 
     const expensesByCategory = filteredExpenses.reduce((acc, e) => {
         acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
@@ -413,6 +457,24 @@ export const ReportsScreen: React.FC = () => {
                     </>
                 )}
 
+                <Text style={styles.sectionTitle}>Stock Movement (Lifetime)</Text>
+                <Card style={styles.chartCard}>
+                    <View style={styles.stockMovementHeader}>
+                        <Text style={[styles.stockColumnLabel, { flex: 2 }]}>Product</Text>
+                        <Text style={styles.stockColumnLabel}>In</Text>
+                        <Text style={styles.stockColumnLabel}>Out</Text>
+                        <Text style={styles.stockColumnLabel}>Stock</Text>
+                    </View>
+                    {stockMovement.slice(0, 10).map((p, idx) => (
+                        <View key={idx} style={[styles.stockMovementRow, idx === stockMovement.length - 1 && { borderBottomWidth: 0 }]}>
+                            <Text style={[styles.stockProductName, { flex: 2 }]} numberOfLines={1}>{p.name}</Text>
+                            <Text style={styles.stockQtyIn}>+{p.purchased}</Text>
+                            <Text style={styles.stockQtyOut}>-{p.sold}</Text>
+                            <Text style={[styles.stockQtyCurrent, { color: p.stock <= 5 ? colors.semantic.error : colors.text.primary }]}>{p.stock}</Text>
+                        </View>
+                    ))}
+                </Card>
+
                 <Text style={styles.sectionTitle}>Expense Breakdown</Text>
                 {pieChartData.length > 0 ? (
                     <Card style={styles.chartCard}>
@@ -544,10 +606,10 @@ export const ReportsScreen: React.FC = () => {
                                         <Text style={styles.customerMeta}>{customer.salesCount} sale{customer.salesCount > 1 ? 's' : ''}</Text>
                                     </View>
                                     <View style={styles.customerStats}>
-                                        <Text style={styles.customerAmount}>{currency} {customer.totalAmount.toLocaleString()}</Text>
+                                        <Text style={styles.customerAmount}>{currency} {(customer.totalAmount || 0).toLocaleString()}</Text>
                                         {customer.paidAmount < customer.totalAmount && (
                                             <Text style={styles.customerPending}>
-                                                {currency} {(customer.totalAmount - customer.paidAmount).toLocaleString()} due
+                                                {currency} {((customer.totalAmount || 0) - (customer.paidAmount || 0)).toLocaleString()} due
                                             </Text>
                                         )}
                                     </View>
@@ -705,6 +767,13 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     customerStats: { alignItems: 'flex-end' },
     customerAmount: { fontSize: 14, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     customerPending: { fontSize: 11, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium, marginTop: 2 },
+    stockMovementHeader: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border.default, marginBottom: 8 },
+    stockColumnLabel: { flex: 1, fontSize: 10, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.bold, textTransform: 'uppercase', textAlign: 'center' },
+    stockMovementRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border.default },
+    stockProductName: { fontSize: 13, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
+    stockQtyIn: { flex: 1, fontSize: 13, color: colors.semantic.success, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
+    stockQtyOut: { flex: 1, fontSize: 13, color: colors.brand.primary, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
+    stockQtyCurrent: { flex: 1, fontSize: 14, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
     bottomSpacer: { height: tokens.spacing.xl + 80 },
     // CSV Export Styles
     exportBtnGroup: { flexDirection: 'row', gap: 8 },

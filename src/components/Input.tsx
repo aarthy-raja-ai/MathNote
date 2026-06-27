@@ -14,6 +14,7 @@ interface InputProps extends RNTextInputProps {
     label?: string;
     error?: string;
     containerStyle?: ViewStyle;
+    renderRight?: () => React.ReactNode;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -21,6 +22,7 @@ export const Input: React.FC<InputProps> = ({
     error,
     containerStyle,
     style,
+    renderRight,
     ...props
 }) => {
     const [isFocused, setIsFocused] = useState(false);
@@ -59,13 +61,20 @@ export const Input: React.FC<InputProps> = ({
                     error && styles.errorBorder,
                 ]}
             >
-                <RNTextInput
-                    style={[styles.input, style]}
-                    placeholderTextColor={tokens.colors.text.muted}
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
-                    {...props}
-                />
+                <View style={styles.inputInner}>
+                    <RNTextInput
+                        style={[styles.input, style]}
+                        placeholderTextColor={tokens.colors.text.muted}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
+                        {...props}
+                    />
+                    {renderRight && (
+                        <View style={styles.rightAccessory}>
+                            {renderRight()}
+                        </View>
+                    )}
+                </View>
             </Animated.View>
             {error && <Text style={styles.errorText}>{error}</Text>}
         </View>
@@ -88,12 +97,20 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: tokens.colors.border.default,
     },
+    inputInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     input: {
+        flex: 1,
         paddingVertical: tokens.spacing.sm,
         paddingHorizontal: tokens.spacing.md,
         fontSize: tokens.typography.sizes.md,
         color: tokens.colors.text.primary,
         minHeight: 48,
+    },
+    rightAccessory: {
+        paddingRight: tokens.spacing.md,
     },
     errorBorder: {
         borderColor: tokens.colors.brand.primary,

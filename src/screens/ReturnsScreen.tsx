@@ -36,7 +36,7 @@ export const ReturnsScreen: React.FC = () => {
                         <Text style={styles.dateText}>{new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
                     </View>
                     <View style={styles.amountCol}>
-                        <Text style={styles.amountText}>{currency} {item.amount.toLocaleString()}</Text>
+                        <Text style={styles.amountText}>{currency} {(item.amount || 0).toLocaleString()}</Text>
                         <Pressable onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
                             <Trash2 size={18} color={colors.semantic.error} />
                         </Pressable>

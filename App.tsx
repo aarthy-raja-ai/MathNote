@@ -10,13 +10,14 @@ import {
   Exo2_700Bold,
 } from '@expo-google-fonts/exo-2';
 import { ThemeProvider, useTheme } from './src/theme';
-import { AppProvider, useApp } from './src/context';
+import { AppProvider, useApp, AuthProvider, useAuth } from './src/context';
 import { AppNavigator } from './src/navigation';
-import { LockScreen } from './src/screens';
+import { LockScreen, LoginScreen, RegisterScreen } from './src/screens';
 
 const AppContent: React.FC = () => {
   const { mode } = useTheme();
   const { settings } = useApp();
+  const { isAuthenticated, login, currentUser, users } = useAuth();
   const [isLocked, setIsLocked] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
 
@@ -29,7 +30,6 @@ const AppContent: React.FC = () => {
   }, [settings.lock, hasInitialized]);
 
   useEffect(() => {
-    // Re-lock when app goes to background
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (nextAppState === 'background' && settings.lock) {
         setIsLocked(true);
@@ -44,8 +44,37 @@ const AppContent: React.FC = () => {
     setIsLocked(false);
   };
 
+  // If app is locked (global lock)
   if (isLocked && settings.lock) {
-    return <LockScreen onUnlock={handleUnlock} />;
+    return (
+      <LockScreen
+        onUnlock={handleUnlock}
+        onValidate={async (pin) => {
+          const success = await login(pin, currentUser?.id);
+          if (success) {
+            handleUnlock();
+            return true;
+          }
+          return false;
+        }}
+        title="MathNote Locked"
+        subtitle="Enter PIN to unlock"
+      />
+    );
+  }
+
+  // If no users exist, it means the app is not registered. Show RegisterScreen!
+  if (users.length === 0) {
+    return (
+      <RegisterScreen />
+    );
+  }
+
+  // If user is not authenticated (Username/Password login)
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen />
+    );
   }
 
   return (
@@ -76,7 +105,9 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AppProvider>
-          <AppContent />
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
         </AppProvider>
       </ThemeProvider>
     </SafeAreaProvider>

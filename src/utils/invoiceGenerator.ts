@@ -1,6 +1,7 @@
 
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Linking } from 'react-native';
 import { Sale, Expense, Credit, Settings } from './storage';
 
 // Invoice print size options
@@ -28,25 +29,66 @@ const getPrintSizeCSS = (size: InvoicePrintSize): string => {
 const getInvoiceData = (sale: Sale, settings: Settings) => {
   const subtotal = sale.subtotal || sale.totalAmount;
   const discountTotal = sale.discountTotal || 0;
-  const gstRate = settings.gstRate || 18;
+  const gstRate = sale.gstRate !== undefined ? sale.gstRate : (settings.gstRate || 18);
   const taxableAmount = subtotal - discountTotal;
   let cgst = 0, sgst = 0, igst = 0, taxTotal = 0;
 
   if (settings.gstEnabled) {
     if (settings.gstType === 'inter') {
-      igst = sale.igst || (taxableAmount * gstRate / 100);
+      igst = sale.igst !== undefined ? sale.igst : (taxableAmount * gstRate / 100);
       taxTotal = igst;
     } else {
-      cgst = sale.cgst || (taxableAmount * (gstRate / 2) / 100);
-      sgst = sale.sgst || (taxableAmount * (gstRate / 2) / 100);
+      // Use saved CGST/SGST if available, otherwise calculate from sale's gstRate
+      cgst = sale.cgst !== undefined ? sale.cgst : (taxableAmount * (gstRate / 2) / 100);
+      sgst = sale.sgst !== undefined ? sale.sgst : (taxableAmount * (gstRate / 2) / 100);
       taxTotal = cgst + sgst;
     }
   }
 
   const invoiceNumber = sale.invoiceNumber || `${settings.invoicePrefix || 'INV'}-${sale.id.toUpperCase().slice(0, 8)}`;
   const currency = settings.currency || '₹';
+  const discountType = sale.discountType || 'percent';
 
-  return { subtotal, discountTotal, gstRate, taxableAmount, cgst, sgst, igst, taxTotal, invoiceNumber, currency };
+  return { subtotal, discountTotal, discountType, gstRate, taxableAmount, cgst, sgst, igst, taxTotal, invoiceNumber, currency };
+};
+
+const getTaxBreakdown = (sale: Sale, settings: Settings) => {
+  const taxBreakdown: Record<number, { cgst: number; sgst: number; igst: number }> = {};
+  const gstEnabled = settings.gstEnabled;
+
+  if (gstEnabled && sale.items && sale.items.length > 0) {
+      sale.items.forEach(item => {
+          const rate = item.taxRate !== undefined ? item.taxRate : (sale.gstRate !== undefined ? sale.gstRate : (settings.gstRate || 18));
+          if (rate === 0) return;
+
+          if (!taxBreakdown[rate]) {
+              taxBreakdown[rate] = { cgst: 0, sgst: 0, igst: 0 };
+          }
+
+          const isInterState = settings.gstType === 'inter';
+          let itemTax = 0;
+          if (item.taxAmount !== undefined) {
+              itemTax = item.taxAmount;
+          } else {
+              const itemTotal = item.quantity * item.unitPrice;
+              const isInclusive = (sale as any).taxMode === 'inclusive' || settings.taxMode === 'inclusive';
+              if (isInclusive) {
+                  itemTax = itemTotal - (itemTotal / (1 + rate / 100));
+              } else {
+                  itemTax = itemTotal * rate / 100;
+              }
+          }
+
+          const cgstVal = !isInterState ? (item.cgst !== undefined ? item.cgst : itemTax / 2) : 0;
+          const sgstVal = !isInterState ? (item.sgst !== undefined ? item.sgst : itemTax / 2) : 0;
+          const igstVal = isInterState ? (item.igst !== undefined ? item.igst : itemTax) : 0;
+
+          taxBreakdown[rate].cgst += cgstVal;
+          taxBreakdown[rate].sgst += sgstVal;
+          taxBreakdown[rate].igst += igstVal;
+      });
+  }
+  return taxBreakdown;
 };
 
 const getItemsHTML = (sale: Sale, currency: string, isThermal: boolean) => {
@@ -73,6 +115,7 @@ const getItemsHTML = (sale: Sale, currency: string, isThermal: boolean) => {
 
 const classicTemplate = (sale: Sale, settings: Settings, isThermal: boolean): string => {
   const d = getInvoiceData(sale, settings);
+  const taxBreakdown = getTaxBreakdown(sale, settings);
 
   return `
     <style>
@@ -95,38 +138,37 @@ const classicTemplate = (sale: Sale, settings: Settings, isThermal: boolean): st
       .total-section { ${isThermal ? 'width: 100%;' : 'float: right; width: 280px;'} }
       .total-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: ${isThermal ? '9px' : '14px'}; }
       .total-row.tax { color: #666; }
-      .grand-total { font-weight: bold; border-top: 2px solid #333; margin-top: 8px; padding-top: 8px; font-size: ${isThermal ? '11px' : '18px'}; }
-      .footer { margin-top: ${isThermal ? '10px' : '100px'}; text-align: center; color: #999; border-top: 1px solid #eee; padding-top: 15px; font-size: ${isThermal ? '7px' : '12px'}; }
-      .discount-row { color: #28a745; }
+      .total-row.grand-total { border-top: 2px solid #EC0B43; border-bottom: 2px solid #EC0B43; font-weight: bold; font-size: ${isThermal ? '11px' : '18px'}; padding: 10px 0; color: #EC0B43; }
     </style>
     <div class="header">
       <div class="business-info">
-        ${settings.businessLogo ? `<img src="${settings.businessLogo}" class="business-logo" />` : ''}
-        <div class="business-name">${settings.businessName || 'MathNote'}</div>
+        ${settings.businessLogo ? `<img class="business-logo" src="${settings.businessLogo}" />` : ''}
+        <div class="business-name">${settings.businessName || 'MathNote Business'}</div>
         <div class="business-details">
-          ${settings.businessAddress ? `${settings.businessAddress}<br>` : ''}
-          ${settings.businessPhone ? `Phone: ${settings.businessPhone}` : ''}
+          ${settings.businessAddress ? settings.businessAddress : ''}
+          ${settings.businessPhone ? '<br>Phone: ' + settings.businessPhone : ''}
         </div>
         ${settings.businessGSTIN ? `<div class="gstin">GSTIN: ${settings.businessGSTIN}</div>` : ''}
       </div>
       <div class="invoice-info">
-        <div class="title">${isThermal ? 'RECEIPT' : 'INVOICE'}</div>
-        <div class="invoice-number">${d.invoiceNumber}</div>
-        <div style="margin-top: 8px;">Date: ${new Date(sale.date).toLocaleDateString('en-IN')}</div>
+        <div class="title">INVOICE</div>
+        <div class="invoice-number"># ${d.invoiceNumber}</div>
+        <div class="business-details" style="margin-top: 5px;">
+          Date: ${new Date(sale.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+        </div>
       </div>
     </div>
 
     <div class="details">
       <div class="details-row">
         <div>
-          <div class="label">Billed To:</div>
-          <div style="margin-top: 4px; font-weight: 500;">${sale.customerName || 'Walk-in Customer'}</div>
+          <div class="label">Billed To</div>
+          <div style="font-weight: bold; margin-top: 4px; font-size: ${isThermal ? '9px' : '15px'};">${sale.customerName || 'General Customer'}</div>
         </div>
-        ${!isThermal ? `<div style="text-align: right;">
-          <div class="label">Payment Status:</div>
-          <div style="color: ${sale.paidAmount >= sale.totalAmount ? '#28a745' : '#dc3545'}; font-weight: bold; margin-top: 4px;">
-            ${sale.paidAmount >= sale.totalAmount ? 'PAID' : 'PARTIAL'}
-          </div>
+        ${sale.paymentMethod ? `
+        <div style="text-align: right;">
+          <div class="label">Payment Method</div>
+          <div style="font-weight: bold; margin-top: 4px; font-size: ${isThermal ? '9px' : '15px'};">${sale.paymentMethod}</div>
         </div>` : ''}
       </div>
     </div>
@@ -134,10 +176,10 @@ const classicTemplate = (sale: Sale, settings: Settings, isThermal: boolean): st
     <table class="table">
       <thead>
         <tr>
-          <th>Description</th>
-          <th style="text-align: center;">Qty</th>
-          ${!isThermal ? '<th style="text-align: right;">Unit Price</th>' : ''}
-          <th style="text-align: right;">Amount</th>
+          <th>Item Description</th>
+          <th style="text-align: center; width: 60px;">Qty</th>
+          ${!isThermal ? '<th style="text-align: right; width: 100px;">Price</th>' : ''}
+          <th style="text-align: right; width: 100px;">Total</th>
         </tr>
       </thead>
       <tbody>
@@ -150,42 +192,54 @@ const classicTemplate = (sale: Sale, settings: Settings, isThermal: boolean): st
         <div class="label">Subtotal:</div>
         <div>${d.currency}${d.subtotal.toLocaleString()}</div>
       </div>
-      ${d.discountTotal > 0 ? `
-        <div class="total-row discount-row">
-          <div class="label">Discount:</div>
+      ${d.discountTotal > 0 ? (() => {
+        const discountLabel = d.discountType === 'percent'
+          ? `Discount (${((d.discountTotal / d.subtotal) * 100).toFixed(0)}%):`
+          : 'Discount:';
+        return `
+        <div class="total-row" style="color: #28a745;">
+          <div class="label">${discountLabel}</div>
           <div>-${d.currency}${d.discountTotal.toLocaleString()}</div>
-        </div>` : ''}
-      ${settings.gstEnabled ? (settings.gstType === 'inter' ? `
-        <div class="total-row tax">
-          <div class="label">IGST (${d.gstRate}%):</div>
-          <div>${d.currency}${d.igst.toLocaleString()}</div>
-        </div>` : `
-        <div class="total-row tax">
-          <div class="label">CGST (${d.gstRate / 2}%):</div>
-          <div>${d.currency}${d.cgst.toLocaleString()}</div>
-        </div>
-        <div class="total-row tax">
-          <div class="label">SGST (${d.gstRate / 2}%):</div>
-          <div>${d.currency}${d.sgst.toLocaleString()}</div>
-        </div>`) : ''}
+        </div>`;
+      })() : ''}
+      ${settings.gstEnabled ? (
+        Object.keys(taxBreakdown).length > 0 ? (
+          settings.gstType === 'inter' ? 
+            Object.entries(taxBreakdown).map(([rate, vals]) => vals.igst ? `
+              <div class="total-row tax">
+                <div class="label">IGST (${rate}%):</div>
+                <div>${d.currency}${vals.igst.toLocaleString()}</div>
+              </div>` : '').join('')
+            :
+            Object.entries(taxBreakdown).map(([rate, vals]) => vals.cgst ? `
+              <div class="total-row tax">
+                <div class="label">CGST (${parseFloat(rate) / 2}%):</div>
+                <div>${d.currency}${vals.cgst.toLocaleString()}</div>
+              </div>
+              <div class="total-row tax">
+                <div class="label">SGST (${parseFloat(rate) / 2}%):</div>
+                <div>${d.currency}${vals.sgst.toLocaleString()}</div>
+              </div>` : '').join('')
+        ) : (
+          settings.gstType === 'inter' ? `
+            <div class="total-row tax">
+              <div class="label">IGST (${d.gstRate}%):</div>
+              <div>${d.currency}${d.igst.toLocaleString()}</div>
+            </div>` : `
+            <div class="total-row tax">
+              <div class="label">CGST (${d.gstRate / 2}%):</div>
+              <div>${d.currency}${d.cgst.toLocaleString()}</div>
+            </div>
+            <div class="total-row tax">
+              <div class="label">SGST (${d.gstRate / 2}%):</div>
+              <div>${d.currency}${d.sgst.toLocaleString()}</div>
+            </div>`
+        )
+      ) : ''}
       <div class="total-row grand-total">
         <div>Total:</div>
         <div>${d.currency}${sale.totalAmount.toLocaleString()}</div>
       </div>
-      <div class="total-row">
-        <div class="label">Paid:</div>
-        <div>${d.currency}${sale.paidAmount.toLocaleString()}</div>
-      </div>
-      ${sale.totalAmount - sale.paidAmount > 0 ? `
-        <div class="total-row" style="color: #dc3545; font-weight: bold;">
-          <div>Balance Due:</div>
-          <div>${d.currency}${(sale.totalAmount - sale.paidAmount).toLocaleString()}</div>
-        </div>` : ''}
-    </div>
-    <div style="clear: both;"></div>
-    <div class="footer">
-      <p>Thank you for your business!</p>
-      ${!isThermal ? '<p>Generated via MathNote</p>' : ''}
     </div>`;
 };
 
@@ -193,117 +247,124 @@ const classicTemplate = (sale: Sale, settings: Settings, isThermal: boolean): st
 
 const modernTemplate = (sale: Sale, settings: Settings, isThermal: boolean): string => {
   const d = getInvoiceData(sale, settings);
+  const taxBreakdown = getTaxBreakdown(sale, settings);
 
   return `
     <style>
-      * { box-sizing: border-box; }
-      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #334155; margin: 0; }
-      .header-bar { background: linear-gradient(135deg, #6366F1, #8B5CF6); color: white; padding: ${isThermal ? '10px' : '30px'}; border-radius: ${isThermal ? '8px' : '16px'}; margin-bottom: ${isThermal ? '10px' : '24px'}; }
-      .header-top { display: flex; justify-content: space-between; align-items: flex-start; ${isThermal ? 'flex-direction: column;' : ''} }
-      .biz-name { font-size: ${isThermal ? '14px' : '24px'}; font-weight: bold; margin-bottom: 4px; }
-      .biz-detail { font-size: ${isThermal ? '8px' : '12px'}; opacity: 0.85; }
-      .inv-badge { background: rgba(255,255,255,0.2); border-radius: 8px; padding: ${isThermal ? '6px 8px' : '12px 16px'}; ${isThermal ? 'margin-top: 8px;' : 'text-align: right;'} }
-      .inv-label { font-size: ${isThermal ? '9px' : '14px'}; opacity: 0.8; }
-      .inv-number { font-size: ${isThermal ? '12px' : '20px'}; font-weight: bold; }
-      .inv-date { font-size: ${isThermal ? '8px' : '12px'}; opacity: 0.7; margin-top: 4px; }
-      .customer-bar { display: flex; justify-content: space-between; align-items: center; padding: ${isThermal ? '8px' : '16px'}; background: #F1F5F9; border-radius: ${isThermal ? '6px' : '12px'}; margin-bottom: ${isThermal ? '8px' : '20px'}; }
-      .customer-name { font-weight: 600; font-size: ${isThermal ? '10px' : '16px'}; color: #1E293B; }
-      .customer-label { font-size: ${isThermal ? '7px' : '11px'}; color: #64748B; text-transform: uppercase; }
-      .status-badge { padding: 4px 12px; border-radius: 20px; font-size: ${isThermal ? '8px' : '12px'}; font-weight: bold; }
-      .status-paid { background: #D1FAE5; color: #059669; }
-      .status-partial { background: #FEE2E2; color: #DC2626; }
-      .table { width: 100%; border-collapse: collapse; margin-bottom: ${isThermal ? '8px' : '20px'}; }
-      .table th { padding: ${isThermal ? '4px' : '12px'}; text-align: left; font-size: ${isThermal ? '7px' : '11px'}; color: #64748B; text-transform: uppercase; border-bottom: 2px solid #E2E8F0; }
-      .table td { padding: ${isThermal ? '4px' : '12px'}; border-bottom: 1px solid #F1F5F9; font-size: ${isThermal ? '8px' : '14px'}; }
-      .summary-cards { display: flex; gap: ${isThermal ? '4px' : '12px'}; margin-bottom: ${isThermal ? '8px' : '20px'}; }
-      .summary-card { flex: 1; padding: ${isThermal ? '6px' : '16px'}; border-radius: ${isThermal ? '6px' : '12px'}; }
-      .summary-card .s-label { font-size: ${isThermal ? '7px' : '11px'}; color: #64748B; text-transform: uppercase; }
-      .summary-card .s-value { font-size: ${isThermal ? '11px' : '20px'}; font-weight: bold; margin-top: 4px; }
-      .card-total { background: #F8FAFC; }
-      .card-paid { background: #F0FDF4; }
-      .card-due { background: #FEF2F2; }
-      .footer { text-align: center; color: #94A3B8; font-size: ${isThermal ? '7px' : '12px'}; margin-top: ${isThermal ? '10px' : '40px'}; padding-top: 15px; border-top: 1px solid #E2E8F0; }
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333; margin: 0; background-color: #f3f4f6; }
+      .container { max-width: 800px; margin: 0 auto; background: #fff; padding: ${isThermal ? '10px' : '40px'}; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; ${isThermal ? 'flex-direction: column; gap: 15px;' : ''} }
+      .logo-container { display: flex; align-items: center; gap: 12px; }
+      .logo { width: ${isThermal ? '30px' : '50px'}; height: ${isThermal ? '30px' : '50px'}; border-radius: 8px; }
+      .company-name { font-size: ${isThermal ? '14px' : '24px'}; font-weight: bold; color: #1e293b; }
+      .invoice-title { font-size: ${isThermal ? '18px' : '32px'}; font-weight: 800; color: #6366f1; letter-spacing: -0.5px; }
+      .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 30px; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; }
+      .meta-item label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 4px; display: block; }
+      .meta-item value { font-size: 14px; color: #0f172a; font-weight: 500; }
+      .table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+      .table th { background: #f8fafc; padding: 12px; text-align: left; font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; }
+      .table td { padding: 12px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: ${isThermal ? '9px' : 'inherit'}; }
+      .summary-section { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; ${isThermal ? 'flex-direction: column; gap: 20px;' : ''} }
+      .notes-card { max-width: 50%; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; borderRadius: 8px; ${isThermal ? 'max-width: 100%;' : ''} }
+      .totals-card { width: 280px; ${isThermal ? 'width: 100%;' : ''} }
+      .totals-card hr { border: 0; border-top: 1px solid #e2e8f0; margin: 8px 0; }
+      .summary-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 20px; }
+      .summary-card { padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
+      .card-total { background: #f0fdf4; border-color: #bbf7d0; }
+      .card-paid { background: #eff6ff; border-color: #bfdbfe; }
+      .s-label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; }
+      .s-value { font-size: 16px; font-weight: bold; margin-top: 2px; }
     </style>
 
-    <div class="header-bar">
-      <div class="header-top">
+    <div class="container">
+      <div class="header">
+        <div class="logo-container">
+          ${settings.businessLogo ? `<img class="logo" src="${settings.businessLogo}" />` : ''}
+          <div class="company-name">${settings.businessName || 'MathNote Business'}</div>
+        </div>
         <div>
-          <div class="biz-name">${settings.businessName || 'MathNote'}</div>
-          ${settings.businessAddress ? `<div class="biz-detail">${settings.businessAddress}</div>` : ''}
-          ${settings.businessPhone ? `<div class="biz-detail">Phone: ${settings.businessPhone}</div>` : ''}
-          ${settings.businessGSTIN ? `<div class="biz-detail" style="margin-top: 4px; font-weight: 600;">GSTIN: ${settings.businessGSTIN}</div>` : ''}
-        </div>
-        <div class="inv-badge">
-          <div class="inv-label">${isThermal ? 'RECEIPT' : 'INVOICE'}</div>
-          <div class="inv-number">${d.invoiceNumber}</div>
-          <div class="inv-date">${new Date(sale.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+          <div class="invoice-title">INVOICE</div>
+          <div style="font-size: 12px; color: #64748b; margin-top: 4px; text-align: ${isThermal ? 'left' : 'right'};"># ${d.invoiceNumber}</div>
         </div>
       </div>
-    </div>
 
-    <div class="customer-bar">
-      <div>
-        <div class="customer-label">Billed To</div>
-        <div class="customer-name">${sale.customerName || 'Walk-in Customer'}</div>
-      </div>
-      ${!isThermal ? `<div class="status-badge ${sale.paidAmount >= sale.totalAmount ? 'status-paid' : 'status-partial'}">
-        ${sale.paidAmount >= sale.totalAmount ? '✓ PAID' : 'PARTIAL'}
-      </div>` : ''}
-    </div>
-
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th style="text-align: center;">Qty</th>
-          ${!isThermal ? '<th style="text-align: right;">Rate</th>' : ''}
-          <th style="text-align: right;">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${getItemsHTML(sale, d.currency, isThermal)}
-      </tbody>
-    </table>
-
-    ${settings.gstEnabled || d.discountTotal > 0 ? `
-    <div style="margin-bottom: 16px; font-size: ${isThermal ? '8px' : '13px'}; color: #64748B;">
-      <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-        <span>Subtotal</span><span>${d.currency}${d.subtotal.toLocaleString()}</span>
-      </div>
-      ${d.discountTotal > 0 ? `<div style="display: flex; justify-content: space-between; padding: 4px 0; color: #059669;">
-        <span>Discount</span><span>-${d.currency}${d.discountTotal.toLocaleString()}</span>
-      </div>` : ''}
-      ${settings.gstEnabled ? (settings.gstType === 'inter' ? `
-        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-          <span>IGST (${d.gstRate}%)</span><span>${d.currency}${d.igst.toLocaleString()}</span>
-        </div>` : `
-        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-          <span>CGST (${d.gstRate / 2}%)</span><span>${d.currency}${d.cgst.toLocaleString()}</span>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <label>Billed To</label>
+          <value>${sale.customerName || 'General Customer'}</value>
         </div>
-        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-          <span>SGST (${d.gstRate / 2}%)</span><span>${d.currency}${d.sgst.toLocaleString()}</span>
-        </div>`) : ''}
-    </div>` : ''}
-
-    <div class="summary-cards">
-      <div class="summary-card card-total">
-        <div class="s-label">Total</div>
-        <div class="s-value" style="color: #1E293B;">${d.currency}${sale.totalAmount.toLocaleString()}</div>
+        <div class="meta-item" style="text-align: right;">
+          <label>Invoice Date</label>
+          <value>${new Date(sale.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</value>
+        </div>
       </div>
-      <div class="summary-card card-paid">
-        <div class="s-label">Paid</div>
-        <div class="s-value" style="color: #059669;">${d.currency}${sale.paidAmount.toLocaleString()}</div>
-      </div>
-      ${sale.totalAmount - sale.paidAmount > 0 ? `
-      <div class="summary-card card-due">
-        <div class="s-label">Balance Due</div>
-        <div class="s-value" style="color: #DC2626;">${d.currency}${(sale.totalAmount - sale.paidAmount).toLocaleString()}</div>
-      </div>` : ''}
-    </div>
 
-    <div class="footer">
-      <p>Thank you for your business!</p>
-      ${!isThermal ? '<p>Generated via MathNote</p>' : ''}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Item Details</th>
+            <th style="text-align: center; width: 60px;">Qty</th>
+            ${!isThermal ? '<th style="text-align: right; width: 100px;">Price</th>' : ''}
+            <th style="text-align: right; width: 100px;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${getItemsHTML(sale, d.currency, isThermal)}
+        </tbody>
+      </table>
+
+      <div class="summary-section">
+        <div class="notes-card">
+          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 6px;">Notes / Terms</div>
+          <div style="font-size: 12px; color: #475569; line-height: 1.5;">${sale.note || 'Thank you for your business!'}</div>
+        </div>
+        <div class="totals-card">
+          <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+            <span>Subtotal</span><span>${d.currency}${d.subtotal.toLocaleString()}</span>
+          </div>
+          ${d.discountTotal > 0 ? (() => {
+            const discountLabel = d.discountType === 'percent'
+              ? `Discount (${((d.discountTotal / d.subtotal) * 100).toFixed(0)}%)`
+              : 'Discount';
+            return `
+            <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #059669;">
+              <span>${discountLabel}</span><span>-${d.currency}${d.discountTotal.toLocaleString()}</span>
+            </div>`;
+          })() : ''}
+          ${settings.gstEnabled ? (
+            Object.keys(taxBreakdown).length > 0 ? (
+              settings.gstType === 'inter' ? 
+                Object.entries(taxBreakdown).map(([rate, vals]) => vals.igst ? `
+                  <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                    <span>IGST (${rate}%)</span><span>${d.currency}${vals.igst.toLocaleString()}</span>
+                  </div>` : '').join('')
+                :
+                Object.entries(taxBreakdown).map(([rate, vals]) => vals.cgst ? `
+                  <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                    <span>CGST (${parseFloat(rate) / 2}%)</span><span>${d.currency}${vals.cgst.toLocaleString()}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                    <span>SGST (${parseFloat(rate) / 2}%)</span><span>${d.currency}${vals.sgst.toLocaleString()}</span>
+                  </div>` : '').join('')
+            ) : (
+              settings.gstType === 'inter' ? `
+                <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                  <span>IGST (${d.gstRate}%)</span><span>${d.currency}${d.igst.toLocaleString()}</span>
+                </div>` : `
+                <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                  <span>CGST (${d.gstRate / 2}%)</span><span>${d.currency}${d.cgst.toLocaleString()}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                  <span>SGST (${d.gstRate / 2}%)</span><span>${d.currency}${d.sgst.toLocaleString()}</span>
+                </div>`
+            )
+          ) : ''}
+          <hr>
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; font-weight: bold; font-size: 16px;">
+            <span>Total</span><span>${d.currency}${sale.totalAmount.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
     </div>`;
 };
 
@@ -311,64 +372,76 @@ const modernTemplate = (sale: Sale, settings: Settings, isThermal: boolean): str
 
 const minimalTemplate = (sale: Sale, settings: Settings, isThermal: boolean): string => {
   const d = getInvoiceData(sale, settings);
+  const taxBreakdown = getTaxBreakdown(sale, settings);
 
   return `
     <style>
-      body { font-family: 'Courier New', Courier, monospace; color: #000; margin: 0; }
-      .header { border-bottom: 1px solid #000; padding-bottom: ${isThermal ? '6px' : '12px'}; margin-bottom: ${isThermal ? '8px' : '16px'}; }
-      .biz-name { font-weight: bold; font-size: ${isThermal ? '13px' : '20px'}; text-transform: uppercase; }
-      .biz-detail { font-size: ${isThermal ? '8px' : '11px'}; color: #444; }
-      .inv-row { display: flex; justify-content: space-between; margin-top: ${isThermal ? '4px' : '8px'}; font-size: ${isThermal ? '9px' : '13px'}; }
-      .customer { padding: ${isThermal ? '4px 0' : '8px 0'}; font-size: ${isThermal ? '9px' : '13px'}; margin-bottom: ${isThermal ? '4px' : '8px'}; }
-      .table { width: 100%; border-collapse: collapse; margin-bottom: ${isThermal ? '6px' : '16px'}; }
-      .table th { padding: ${isThermal ? '3px 0' : '6px 0'}; text-align: left; border-bottom: 1px solid #000; font-size: ${isThermal ? '8px' : '12px'}; text-transform: uppercase; }
-      .table td { padding: ${isThermal ? '2px 0' : '6px 0'}; border-bottom: 1px dashed #ccc; font-size: ${isThermal ? '8px' : '13px'}; }
-      .totals { border-top: 1px solid #000; padding-top: ${isThermal ? '4px' : '8px'}; }
-      .totals .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: ${isThermal ? '9px' : '13px'}; }
-      .totals .grand { font-weight: bold; font-size: ${isThermal ? '12px' : '16px'}; border-top: 2px solid #000; margin-top: 4px; padding-top: 4px; }
-      .footer { text-align: center; font-size: ${isThermal ? '7px' : '10px'}; color: #666; margin-top: ${isThermal ? '8px' : '24px'}; border-top: 1px dashed #ccc; padding-top: 8px; }
+      body { font-family: monospace; color: #000; margin: 0; padding: ${isThermal ? '5px' : '20px'}; font-size: ${isThermal ? '10px' : '13px'}; line-height: 1.4; background: #fff; }
+      .title { font-size: ${isThermal ? '16px' : '20px'}; font-weight: bold; text-align: center; margin-bottom: 15px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+      .info-section { margin-bottom: 15px; font-size: ${isThermal ? '9px' : 'inherit'}; }
+      .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+      .table { width: 100%; border-collapse: collapse; margin: 15px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
+      .table th { padding: 6px 0; text-align: left; font-size: ${isThermal ? '9px' : 'inherit'}; }
+      .table td { padding: 6px 0; font-size: ${isThermal ? '9px' : 'inherit'}; }
+      .summary { margin-top: 15px; border-top: 1px dashed #000; padding-top: 8px; }
+      .grand { font-weight: bold; font-size: ${isThermal ? '12px' : '15px'}; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; margin: 6px 0; }
+      .footer { text-align: center; margin-top: 30px; font-size: ${isThermal ? '8px' : '11px'}; }
     </style>
 
-    <div class="header">
-      <div class="biz-name">${settings.businessName || 'MathNote'}</div>
-      ${settings.businessAddress ? `<div class="biz-detail">${settings.businessAddress}</div>` : ''}
-      ${settings.businessPhone ? `<div class="biz-detail">Tel: ${settings.businessPhone}</div>` : ''}
-      ${settings.businessGSTIN ? `<div class="biz-detail">GSTIN: ${settings.businessGSTIN}</div>` : ''}
-      <div class="inv-row">
-        <span>${isThermal ? 'RECEIPT' : 'INVOICE'} #${d.invoiceNumber}</span>
-        <span>${new Date(sale.date).toLocaleDateString('en-IN')}</span>
-      </div>
+    <div class="title">
+      ${settings.businessName ? settings.businessName.toUpperCase() : 'MATHNOTE BILL'}<br>
+      <span style="font-size: ${isThermal ? '8px' : '11px'}; font-weight: normal;">
+        ${settings.businessAddress ? settings.businessAddress : ''}
+        ${settings.businessPhone ? '<br>TEL: ' + settings.businessPhone : ''}
+        ${settings.businessGSTIN ? '<br>GSTIN: ' + settings.businessGSTIN : ''}
+      </span>
     </div>
 
-    <div class="customer">
-      <strong>To:</strong> ${sale.customerName || 'Walk-in Customer'}
-      ${!isThermal && sale.paidAmount < sale.totalAmount ? ` <span style="float: right; font-weight: bold;">PARTIAL</span>` : ''}
+    <div class="info-section">
+      <div class="row"><span>Invoice:</span><span># ${d.invoiceNumber}</span></div>
+      <div class="row"><span>Date:</span><span>${new Date(sale.date).toLocaleDateString('en-IN')}</span></div>
+      <div class="row"><span>Customer:</span><span>${sale.customerName || 'General Customer'}</span></div>
+      ${sale.paymentMethod ? `<div class="row"><span>Payment:</span><span>${sale.paymentMethod}</span></div>` : ''}
     </div>
 
     <table class="table">
       <thead>
         <tr>
           <th>Item</th>
-          <th style="text-align: center;">Qty</th>
-          ${!isThermal ? '<th style="text-align: right;">Rate</th>' : ''}
-          <th style="text-align: right;">Amt</th>
+          <th style="text-align: center; width: 40px;">Qty</th>
+          <th style="text-align: right; width: 80px;">Amount</th>
         </tr>
       </thead>
       <tbody>
-        ${getItemsHTML(sale, d.currency, isThermal)}
+        ${getItemsHTML(sale, d.currency, true)}
       </tbody>
     </table>
 
-    <div class="totals">
-      ${(d.discountTotal > 0 || settings.gstEnabled) ? `
-        <div class="row"><span>Subtotal</span><span>${d.currency}${d.subtotal.toLocaleString()}</span></div>
-        ${d.discountTotal > 0 ? `<div class="row"><span>Discount</span><span>-${d.currency}${d.discountTotal.toLocaleString()}</span></div>` : ''}
-        ${settings.gstEnabled ? (settings.gstType === 'inter'
-        ? `<div class="row"><span>IGST ${d.gstRate}%</span><span>${d.currency}${d.igst.toLocaleString()}</span></div>`
-        : `<div class="row"><span>CGST ${d.gstRate / 2}%</span><span>${d.currency}${d.cgst.toLocaleString()}</span></div>
-             <div class="row"><span>SGST ${d.gstRate / 2}%</span><span>${d.currency}${d.sgst.toLocaleString()}</span></div>`
+    <div class="summary">
+      <div class="row"><span>Subtotal</span><span>${d.currency}${d.subtotal.toLocaleString()}</span></div>
+      ${d.discountTotal > 0 ? (() => {
+        const discountLabel = d.discountType === 'percent'
+          ? `Discount (${((d.discountTotal / d.subtotal) * 100).toFixed(0)}%)`
+          : 'Discount';
+        return `
+          <div class="row"><span>${discountLabel}</span><span>-${d.currency}${d.discountTotal.toLocaleString()}</span></div>`;
+      })() : ''}
+      ${settings.gstEnabled ? (
+        Object.keys(taxBreakdown).length > 0 ? (
+          settings.gstType === 'inter' ? 
+            Object.entries(taxBreakdown).map(([rate, vals]) => vals.igst ? `
+              <div class="row"><span>IGST ${rate}%</span><span>${d.currency}${vals.igst.toLocaleString()}</span></div>` : '').join('')
+            :
+            Object.entries(taxBreakdown).map(([rate, vals]) => vals.cgst ? `
+              <div class="row"><span>CGST ${parseFloat(rate) / 2}%</span><span>${d.currency}${vals.cgst.toLocaleString()}</span></div>
+              <div class="row"><span>SGST ${parseFloat(rate) / 2}%</span><span>${d.currency}${vals.sgst.toLocaleString()}</span></div>` : '').join('')
+        ) : (
+          settings.gstType === 'inter' ? `
+            <div class="row"><span>IGST ${d.gstRate}%</span><span>${d.currency}${d.igst.toLocaleString()}</span></div>` : `
+            <div class="row"><span>CGST ${d.gstRate / 2}%</span><span>${d.currency}${d.cgst.toLocaleString()}</span></div>
+            <div class="row"><span>SGST ${d.gstRate / 2}%</span><span>${d.currency}${d.sgst.toLocaleString()}</span></div>`
+        )
       ) : ''}
-      ` : ''}
       <div class="row grand"><span>TOTAL</span><span>${d.currency}${sale.totalAmount.toLocaleString()}</span></div>
       <div class="row"><span>Paid</span><span>${d.currency}${sale.paidAmount.toLocaleString()}</span></div>
       ${sale.totalAmount - sale.paidAmount > 0 ? `<div class="row" style="font-weight: bold;"><span>Due</span><span>${d.currency}${(sale.totalAmount - sale.paidAmount).toLocaleString()}</span></div>` : ''}
@@ -579,5 +652,11 @@ export const generateCreditReport = async (
 
 export const shareOnWhatsApp = async (text: string) => {
   const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
-  return url;
+  const canOpen = await Linking.canOpenURL(url);
+  if (canOpen) {
+    await Linking.openURL(url);
+  } else {
+    // Fallback to web WhatsApp
+    await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`);
+  }
 };

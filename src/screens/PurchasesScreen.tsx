@@ -17,13 +17,13 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { Pencil, Trash2, Share2, FileText, RotateCcw, TrendingUp, Percent, Zap, ZapOff } from 'lucide-react-native';
-import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker, QuickAddGrid } from '../components';
+import { useNavigation } from '@react-navigation/native';
+import { Pencil, Trash2, ShoppingCart, Package, Plus } from 'lucide-react-native';
+import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
-import { Sale, Product, SaleItem } from '../utils/storage';
+import { Purchase, Product, SaleItem } from '../utils/storage';
 import { evaluateMath } from '../utils/mathEvaluator';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -31,7 +31,6 @@ const SHEET_HEIGHT = SCREEN_HEIGHT * 0.70;
 
 type PaymentMethod = 'Cash' | 'UPI';
 
-// Payment Method Segmented Control
 interface SegmentedControlProps {
     selected: PaymentMethod;
     onChange: (method: PaymentMethod) => void;
@@ -67,18 +66,16 @@ const segmentStyles = StyleSheet.create({
     text: { fontSize: tokens.typography.sizes.md },
 });
 
-export const SalesScreen: React.FC = () => {
+export const PurchasesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
-    const route = useRoute<any>();
-    const { sales, addSale, updateSale, deleteSale, addReturn, settings, updateSettings, contacts, products, returns } = useApp();
+    const { purchases, addPurchase, updatePurchase, deletePurchase, settings, contacts, products } = useApp();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
-    const [editingSale, setEditingSale] = useState<Sale | null>(null);
-    const [expressMode, setExpressMode] = useState(false);
+    const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
 
     // Form fields
-    const [customerName, setCustomerName] = useState('');
+    const [vendorName, setVendorName] = useState('');
     const [totalAmount, setTotalAmount] = useState('');
     const [paidAmount, setPaidAmount] = useState('');
     const [note, setNote] = useState('');
@@ -93,46 +90,12 @@ export const SalesScreen: React.FC = () => {
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [dateInputValue, setDateInputValue] = useState('');
 
-
-
     const slideAnim = useRef(new Animated.Value(100)).current;
     const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 
     const today = new Date().toISOString().split('T')[0];
     const currency = settings.currency;
     const styles = useMemo(() => createStyles(colors), [colors]);
-
-    useEffect(() => {
-        if (route?.params?.productId) {
-            const prodId = route.params.productId;
-            if (navigation) {
-                navigation.setParams({ productId: undefined });
-            }
-
-            const product = products.find(p => p.id === prodId);
-            if (product) {
-                setEditingSale(null);
-                setCustomerName(expressMode ? 'Walk-in' : '');
-                setNote('');
-                setPaymentMethod('Cash');
-                setDiscountPercent('');
-                setDiscountType('percent');
-                setGstRate(settings.gstRate || 0);
-
-                const newItem: SaleItem = {
-                    productId: product.id,
-                    productName: product.name,
-                    quantity: 1,
-                    unitPrice: product.unitPrice,
-                    costPrice: product.costPrice,
-                };
-                setSelectedItems([newItem]);
-                setTotalAmount(product.unitPrice.toString());
-                setPaidAmount(product.unitPrice.toString());
-                setModalVisible(true);
-            }
-        }
-    }, [route?.params]);
 
     useEffect(() => {
         Animated.spring(slideAnim, {
@@ -168,8 +131,8 @@ export const SalesScreen: React.FC = () => {
     };
 
     const handleAdd = () => {
-        setEditingSale(null);
-        setCustomerName(expressMode ? 'Walk-in' : '');
+        setEditingPurchase(null);
+        setVendorName('');
         setTotalAmount('');
         setPaidAmount('');
         setNote('');
@@ -181,33 +144,31 @@ export const SalesScreen: React.FC = () => {
         setModalVisible(true);
     };
 
-    const handleEdit = (sale: Sale) => {
-        setEditingSale(sale);
-        setCustomerName(sale.customerName || '');
-        // Use subtotal if available (new format), otherwise use totalAmount
-        const subtotal = sale.subtotal || sale.totalAmount || 0;
-        const paid = sale.paidAmount ?? sale.totalAmount ?? 0;
+    const handleEdit = (purchase: Purchase) => {
+        setEditingPurchase(purchase);
+        setVendorName(purchase.vendorName || '');
+        const subtotal = purchase.subtotal || purchase.totalAmount || 0;
+        const paid = purchase.paidAmount ?? purchase.totalAmount ?? 0;
         setTotalAmount(subtotal.toString());
         setPaidAmount(paid.toString());
-        setNote(sale.note || '');
-        setPaymentMethod(sale.paymentMethod || 'Cash');
-        setSelectedItems(sale.items || []);
-        // Restore discount
-        const savedType = sale.discountType || 'percent';
+        setNote(purchase.note || '');
+        setPaymentMethod(purchase.paymentMethod || 'Cash');
+        setSelectedItems(purchase.items || []);
+
+        const savedType = purchase.discountType || 'percent';
         setDiscountType(savedType);
-        if (sale.discountTotal && sale.discountTotal > 0) {
+        if (purchase.discountTotal && purchase.discountTotal > 0) {
             if (savedType === 'flat') {
-                setDiscountPercent(sale.discountTotal.toString());
-            } else if (sale.subtotal && sale.subtotal > 0) {
-                const discountPct = (sale.discountTotal / sale.subtotal) * 100;
+                setDiscountPercent(purchase.discountTotal.toString());
+            } else if (purchase.subtotal && purchase.subtotal > 0) {
+                const discountPct = (purchase.discountTotal / purchase.subtotal) * 100;
                 setDiscountPercent(discountPct.toString());
             } else {
                 setDiscountPercent('');
             }
-        } else {
             setDiscountPercent('');
         }
-        setGstRate(sale.gstRate ?? settings.gstRate ?? 0);
+        setGstRate(purchase.gstRate ?? settings.gstRate ?? 0);
         setModalVisible(true);
     };
 
@@ -225,7 +186,7 @@ export const SalesScreen: React.FC = () => {
                 productId: product.id,
                 productName: product.name,
                 quantity: 1,
-                unitPrice: product.unitPrice,
+                unitPrice: product.costPrice || product.unitPrice,
                 costPrice: product.costPrice,
             };
             const newItems = [...selectedItems, newItem];
@@ -278,45 +239,14 @@ export const SalesScreen: React.FC = () => {
     };
 
     const handleDelete = (id: string) => {
-        Alert.alert('Delete Sale', 'This will also delete any linked credit. Continue?', [
+        Alert.alert('Delete Purchase', 'This will rollback stock increments. Continue?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => deleteSale(id) },
+            { text: 'Delete', style: 'destructive', onPress: () => deletePurchase(id) },
         ]);
-    };
-
-    const handleReturn = (sale: Sale) => {
-        const { total, paid } = getSaleAmount(sale);
-
-        // Check if already returned
-        const isReturned = returns.some(r => r.saleId === sale.id);
-        if (isReturned) {
-            Alert.alert('Already Returned', 'This sale has already been returned.');
-            return;
-        }
-
-        Alert.alert(
-            'Return Sale',
-            `Are you sure you want to return this sale? Total amount: ${currency}${total.toLocaleString()}\n\nThis will restore product stock and update balance.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Return Sale',
-                    style: 'destructive',
-                    onPress: () => addReturn({
-                        saleId: sale.id,
-                        date: today,
-                        amount: paid, // Money refunded (deducted from balance)
-                        note: `Return of sale (${currency}${total} total) to ${sale.customerName || 'Walk-in'} on ${sale.date}`,
-                    })
-                },
-            ]
-        );
     };
 
     const handleSave = async () => {
         let parsedSubtotal = parseFloat(totalAmount);
-
-        // If parsing fails, try math evaluation
         if (isNaN(parsedSubtotal)) {
             const mathResult = evaluateMath(totalAmount);
             if (mathResult !== null) parsedSubtotal = mathResult;
@@ -327,107 +257,53 @@ export const SalesScreen: React.FC = () => {
             return;
         }
 
-        // Calculate billing amounts
         const discountVal = parseFloat(discountPercent) || 0;
         const discountAmt = discountType === 'flat' ? discountVal : parsedSubtotal * discountVal / 100;
-        const taxableAmount = parsedSubtotal - discountAmt;
+        const taxable = parsedSubtotal - discountAmt;
+        const taxTotal = settings.gstEnabled ? (taxable * gstRate / 100) : 0;
+        const cgst = settings.gstType === 'intra' ? taxTotal / 2 : 0;
+        const sgst = settings.gstType === 'intra' ? taxTotal / 2 : 0;
+        const igst = settings.gstType === 'inter' ? taxTotal : 0;
 
-        // Find contact to check their state and other details
-        const contact = contacts.find(c => c.name.trim().toLowerCase() === customerName.trim().toLowerCase());
-        const customerState = contact?.state || '';
-        const businessState = settings.businessState || '';
+        const finalTotal = taxable + taxTotal;
+        const parsedPaid = paidAmount ? parseFloat(paidAmount) : finalTotal;
 
-        let taxTotal = 0, cgst = 0, sgst = 0, igst = 0;
-        if (settings.gstEnabled) {
-            const rate = settings.gstRate || 18;
-            let isInter = settings.gstType === 'inter';
-            if (businessState && customerState) {
-                isInter = customerState !== businessState;
-            }
-
-            if (isInter) {
-                igst = taxableAmount * rate / 100;
-                taxTotal = igst;
-            } else {
-                cgst = taxableAmount * (rate / 2) / 100;
-                sgst = cgst;
-                taxTotal = cgst + sgst;
-            }
-        }
-
-        const grandTotal = taxableAmount + taxTotal;
-        const parsedPaid = paidAmount ? parseFloat(paidAmount) : grandTotal;
-
-        if (parsedPaid > grandTotal) {
-            Alert.alert('Error', 'Paid amount cannot exceed total amount');
-            return;
-        }
-        if (parsedPaid < grandTotal && !customerName.trim()) {
-            Alert.alert('Error', 'Customer name is required for partial payments');
-            return;
-        }
-
-        // Generate invoice number for new sales
-        let invoiceNumber: string | undefined;
-        if (!editingSale) {
-            const prefix = settings.invoicePrefix || 'INV';
-            const nextNum = (settings.lastInvoiceNumber || 0) + 1;
-            invoiceNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
-        }
-
-        const saleData = {
-            customerName: customerName.trim() || 'General Customer',
-            customerState: contact?.state || undefined,
-            customerAddress: contact?.address || undefined,
-            customerPhone: contact?.phone || undefined,
-            customerGSTIN: contact?.gstin || undefined,
-            totalAmount: grandTotal,
+        const purchaseData = {
+            vendorName: vendorName.trim() || 'General Vendor',
+            totalAmount: finalTotal,
             paidAmount: parsedPaid,
             note,
             paymentMethod,
             items: selectedItems,
-            // Billing details
             subtotal: parsedSubtotal,
             discountTotal: discountAmt,
             discountType,
             gstRate,
             taxTotal,
-            cgst: cgst || undefined,
-            sgst: sgst || undefined,
-            igst: igst || undefined,
-            invoiceNumber: editingSale ? editingSale.invoiceNumber : invoiceNumber,
+            cgst,
+            sgst,
+            igst,
         };
 
-        if (editingSale) {
-            await updateSale(editingSale.id, saleData);
+        if (editingPurchase) {
+            await updatePurchase(editingPurchase.id, purchaseData);
         } else {
-            await addSale({
+            await addPurchase({
                 date: today,
-                ...saleData,
+                ...purchaseData,
             });
-            // Increment invoice number counter
-            await updateSettings({ lastInvoiceNumber: (settings.lastInvoiceNumber || 0) + 1 });
         }
 
-        if (expressMode && !editingSale) {
-            // In express mode, just close and show a small feedback if possible, or just reset
-            closeModal();
-            return;
-        }
-
-        // Show success message and close modal
-        Alert.alert('Success', editingSale ? 'Sale updated successfully!' : 'Invoice saved successfully!', [
+        Alert.alert('Success', editingPurchase ? 'Purchase updated!' : 'Purchase saved!', [
             { text: 'OK', onPress: () => closeModal() }
         ]);
     };
 
-    // Auto-fill paid amount when total changes
     const handleTotalChange = (text: string) => {
         setTotalAmount(text);
         if (!paidAmount) setPaidAmount(text);
     };
 
-    // Date filter handlers
     const handleFilterChange = (filter: DateFilterType) => {
         setDateFilter(filter);
         setSelectedDate(null);
@@ -453,34 +329,14 @@ export const SalesScreen: React.FC = () => {
         setDatePickerVisible(false);
     };
 
-    // Helper to get sale amounts (handles legacy data)
-    const getSaleAmount = (sale: Sale) => {
-        const total = sale.totalAmount ?? sale.paidAmount ?? 0;
-        const paid = sale.paidAmount ?? sale.totalAmount ?? 0;
-        return { total, paid };
-    };
-
-    // Navigate to invoice preview
-    const handleSharePress = (sale: Sale) => {
-        navigation.navigate('InvoicePreview', { sale });
-    };
-
-    // Filter sales based on selected filter and date
-    const filteredSales = filterByDateRange(sales, dateFilter, selectedDate)
+    const filteredPurchases = filterByDateRange(purchases, dateFilter, selectedDate)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const totalFiltered = filteredSales.reduce((sum, s) => sum + (getSaleAmount(s).paid), 0);
+    const totalFiltered = filteredPurchases.reduce((sum, p) => sum + (p.paidAmount || p.totalAmount), 0);
 
-    const renderSaleItem = ({ item }: { item: Sale }) => {
-        const { total, paid } = getSaleAmount(item);
-        const isPartial = paid < total && total > 0;
-        const remaining = total - paid;
+    const renderPurchaseItem = ({ item }: { item: Purchase }) => {
         const isToday = item.date === today;
-
-        // Build subtitle parts
         const subtitleParts: string[] = [];
-        if (item.invoiceNumber) subtitleParts.push(item.invoiceNumber);
-        if (item.paymentMethod) subtitleParts.push(item.paymentMethod);
-        if (isPartial) subtitleParts.push(`Due: ${currency}${remaining}`);
+        subtitleParts.push(item.paymentMethod);
         if (!isToday) subtitleParts.push(new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
         if (item.note) subtitleParts.push(item.note);
 
@@ -490,34 +346,18 @@ export const SalesScreen: React.FC = () => {
                 onPress={() => handleEdit(item)}
                 onLongPress={() => handleDelete(item.id)}
             >
-                {/* Row 1: Customer name + Amount */}
                 <View style={styles.listRow}>
-                    <Text style={styles.listName} numberOfLines={1} ellipsizeMode="tail">
-                        {item.customerName || 'Walk-in'}
+                    <Text style={styles.listName} numberOfLines={1}>
+                        {item.vendorName}
                     </Text>
                     <View style={styles.amountRow}>
-                        {isPartial && <View style={styles.partialDot} />}
                         <Text style={styles.listAmount}>
-                            {currency} {total.toLocaleString()}
+                            {currency} {(item.totalAmount || 0).toLocaleString()}
                         </Text>
-                        <Pressable
-                            onPress={() => handleSharePress(item)}
-                            style={styles.shareButton}
-                        >
-                            <Share2 size={18} color={colors.brand.primary} />
-                        </Pressable>
-                        <Pressable
-                            onPress={() => handleReturn(item)}
-                            style={styles.shareButton}
-                        >
-                            <RotateCcw size={18} color={colors.semantic.error} />
-                        </Pressable>
                     </View>
                 </View>
-
-                {/* Row 2: Payment method, due amount, date, note */}
                 {subtitleParts.length > 0 && (
-                    <Text style={styles.listSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={styles.listSubtitle} numberOfLines={1}>
                         {subtitleParts.join(' • ')}
                     </Text>
                 )}
@@ -528,21 +368,15 @@ export const SalesScreen: React.FC = () => {
     return (
         <SafeAreaView style={styles.container}>
             <Animated.View style={[styles.content, { transform: [{ translateY: slideAnim }] }]}>
-                <View style={styles.headerTop}>
-                    <View>
-                        <Text style={styles.title}>Sales</Text>
-                        <Text style={styles.date}>{getFilterLabel(dateFilter, selectedDate)}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <Pressable
-                            style={[styles.headerAddBtn, { backgroundColor: expressMode ? colors.brand.primary + '20' : colors.semantic.surface }]}
-                            onPress={() => setExpressMode(!expressMode)}
-                        >
-                            {expressMode ? <Zap size={20} color={colors.brand.primary} /> : <ZapOff size={20} color={colors.text.secondary} />}
-                        </Pressable>
-                        <Pressable style={styles.headerAddBtn} onPress={handleAdd}>
-                            <TrendingUp size={20} color={colors.brand.primary} />
-                        </Pressable>
+                <View style={styles.header}>
+                    <View style={styles.headerTop}>
+                        <View>
+                            <Text style={styles.title}>Purchases</Text>
+                            <Text style={styles.date}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
+                        </View>
+                        <TouchableOpacity style={styles.headerAddBtn} onPress={handleAdd}>
+                            <Plus size={24} color={colors.brand.primary} />
+                        </TouchableOpacity>
                     </View>
                 </View>
 
@@ -555,24 +389,24 @@ export const SalesScreen: React.FC = () => {
                 />
 
                 <Card style={styles.totalCard}>
-                    <Text style={styles.totalLabel}>{getFilterLabel(dateFilter, selectedDate)} Received</Text>
+                    <Text style={styles.totalLabel}>{getFilterLabel(dateFilter, selectedDate)} Payments</Text>
                     <Text style={styles.totalAmount}>{currency} {totalFiltered.toLocaleString()}</Text>
                 </Card>
 
                 <FlatList
-                    data={filteredSales}
+                    data={filteredPurchases}
                     keyExtractor={(item) => item.id}
-                    renderItem={renderSaleItem}
+                    renderItem={renderPurchaseItem}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <View style={styles.emptyIconContainer}>
-                                <TrendingUp size={48} color={colors.brand.primary} strokeWidth={1.5} />
+                                <ShoppingCart size={48} color={colors.brand.primary} strokeWidth={1.5} />
                             </View>
-                            <Text style={styles.emptyText}>No sales found</Text>
+                            <Text style={styles.emptyText}>No purchases found</Text>
                             <Text style={styles.emptySubtext}>
-                                {dateFilter === 'today' ? 'Tap the button below to add your first sale' : 'Try a different date range'}
+                                {dateFilter === 'today' ? 'Tap the button below to add a purchase' : 'Try a different date range'}
                             </Text>
                         </View>
                     }
@@ -580,7 +414,7 @@ export const SalesScreen: React.FC = () => {
             </Animated.View>
 
             <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
-                <Text style={styles.floatingButtonText}>+ Add Sale</Text>
+                <Text style={styles.floatingButtonText}>+ Add Purchase</Text>
             </Pressable>
 
             {/* Date Picker Modal */}
@@ -588,12 +422,11 @@ export const SalesScreen: React.FC = () => {
                 <View style={styles.datePickerOverlay}>
                     <View style={styles.datePickerCard}>
                         <Text style={styles.datePickerTitle}>Select Date</Text>
-                        <Text style={styles.datePickerHint}>Enter date in YYYY-MM-DD format</Text>
                         <TextInput
                             style={styles.datePickerInput}
                             value={dateInputValue}
                             onChangeText={setDateInputValue}
-                            placeholder="2024-01-15"
+                            placeholder="YYYY-MM-DD"
                             placeholderTextColor={colors.text.muted}
                             keyboardType="numbers-and-punctuation"
                         />
@@ -623,73 +456,24 @@ export const SalesScreen: React.FC = () => {
                         </View>
                         <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                             <View style={styles.sheetContent}>
-                                <Text style={styles.modalTitle}>{editingSale ? 'Edit Sale' : 'Add Sale'}</Text>
+                                <Text style={styles.modalTitle}>{editingPurchase ? 'Edit Purchase' : 'Add Purchase'}</Text>
 
-                                <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Select Customer</Text>
+                                <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Select Vendor</Text>
                                 <ContactPicker
                                     contacts={contacts}
                                     colors={colors}
-                                    filterType="Customer"
-                                    onSelect={(contact) => setCustomerName(contact.name)}
+                                    filterType="Vendor"
+                                    onSelect={(contact) => setVendorName(contact.name)}
                                 />
 
-                                {/* Recent Customers Quick Select */}
-                                {(() => {
-                                    const recentCustomers = Array.from(new Set(
-                                        sales
-                                            .filter(s => s.customerName && s.customerName.trim())
-                                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                            .map(s => s.customerName!.trim())
-                                    )).slice(0, 5);
-
-                                    if (recentCustomers.length === 0) return null;
-
-                                    return (
-                                        <View style={styles.recentCustomersContainer}>
-                                            <Text style={[styles.recentLabel, { color: colors.text.muted }]}>Recent:</Text>
-                                            <ScrollView
-                                                horizontal
-                                                showsHorizontalScrollIndicator={false}
-                                                contentContainerStyle={styles.recentChipsRow}
-                                            >
-                                                {recentCustomers.map((name) => (
-                                                    <Pressable
-                                                        key={name}
-                                                        style={[
-                                                            styles.recentChip,
-                                                            { backgroundColor: customerName === name ? colors.brand.primary : colors.semantic.soft }
-                                                        ]}
-                                                        onPress={() => setCustomerName(name)}
-                                                    >
-                                                        <Text style={[
-                                                            styles.recentChipText,
-                                                            { color: customerName === name ? colors.text.inverse : colors.text.primary }
-                                                        ]}>
-                                                            {name}
-                                                        </Text>
-                                                    </Pressable>
-                                                ))}
-                                            </ScrollView>
-                                        </View>
-                                    );
-                                })()}
-
                                 <Input
-                                    label="Customer Name"
-                                    placeholder="Enter customer name (optional)"
-                                    value={customerName}
-                                    onChangeText={setCustomerName}
+                                    label="Vendor Name"
+                                    placeholder="Enter vendor name"
+                                    value={vendorName}
+                                    onChangeText={setVendorName}
                                 />
 
                                 <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Inventory Items</Text>
-                                {expressMode && (
-                                    <QuickAddGrid
-                                        products={products}
-                                        colors={colors}
-                                        onSelect={handleProductSelect}
-                                    />
-                                )}
-
                                 <ProductPicker
                                     products={products}
                                     colors={colors}
@@ -747,7 +531,7 @@ export const SalesScreen: React.FC = () => {
 
                                                 <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
                                                     <Text style={[styles.rowTotalText, { color: colors.text.primary }]}>
-                                                        {currency}{(item.unitPrice * item.quantity).toLocaleString()}
+                                                        {currency}{((item.unitPrice || 0) * (item.quantity || 0)).toLocaleString()}
                                                     </Text>
                                                 </View>
 
@@ -777,13 +561,15 @@ export const SalesScreen: React.FC = () => {
                                 >
                                     <Text style={[styles.addGenericText, { color: colors.brand.primary }]}>+ Add Custom Row</Text>
                                 </TouchableOpacity>
+
                                 <Input
-                                    label="Total Amount"
-                                    placeholder="Enter total amount"
+                                    label="Subtotal"
+                                    placeholder="Enter purchase amount"
                                     keyboardType="numeric"
                                     value={totalAmount}
                                     onChangeText={handleTotalChange}
                                 />
+
                                 <View>
                                     <Text style={[styles.sectionLabel, { color: colors.text.secondary, marginBottom: 6 }]}>Discount</Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -862,7 +648,6 @@ export const SalesScreen: React.FC = () => {
                                     </View>
                                 )}
 
-                                {/* Price Breakdown */}
                                 {totalAmount && parseFloat(totalAmount) > 0 && (
                                     <View style={[styles.priceBreakdown, { backgroundColor: colors.semantic.soft }]}>
                                         <View style={styles.breakdownRow}>
@@ -875,10 +660,9 @@ export const SalesScreen: React.FC = () => {
                                             const sub = parseFloat(totalAmount) || 0;
                                             const dVal = parseFloat(discountPercent) || 0;
                                             const dAmt = discountType === 'flat' ? dVal : sub * dVal / 100;
-                                            const dLabel = discountType === 'flat' ? `Discount (${currency}${dVal})` : `Discount (${discountPercent}%)`;
                                             return (
                                                 <View style={styles.breakdownRow}>
-                                                    <Text style={[styles.breakdownLabel, { color: '#28a745' }]}>{dLabel}</Text>
+                                                    <Text style={[styles.breakdownLabel, { color: '#28a745' }]}>Discount</Text>
                                                     <Text style={[styles.breakdownValue, { color: '#28a745' }]}>
                                                         -{currency}{dAmt.toLocaleString()}
                                                     </Text>
@@ -886,10 +670,10 @@ export const SalesScreen: React.FC = () => {
                                             );
                                         })()}
                                         {settings.gstEnabled && (() => {
-                                            const subtotal = parseFloat(totalAmount) || 0;
-                                            const dv = parseFloat(discountPercent) || 0;
-                                            const discountAmt = discountPercent ? (discountType === 'flat' ? dv : subtotal * dv / 100) : 0;
-                                            const taxable = subtotal - discountAmt;
+                                            const sub = parseFloat(totalAmount) || 0;
+                                            const dVal = parseFloat(discountPercent) || 0;
+                                            const dAmt = discountType === 'flat' ? dVal : sub * dVal / 100;
+                                            const taxable = sub - dAmt;
                                             const rate = gstRate;
                                             if (rate <= 0) return null;
 
@@ -897,8 +681,8 @@ export const SalesScreen: React.FC = () => {
                                                 const igst = taxable * rate / 100;
                                                 return (
                                                     <View style={styles.breakdownRow}>
-                                                        <Text style={[styles.breakdownLabel, { color: colors.text.muted }]}>IGST ({rate}%)</Text>
-                                                        <Text style={[styles.breakdownValue, { color: colors.text.secondary }]}>
+                                                        <Text style={[styles.breakdownLabel, { color: colors.text.secondary }]}>IGST ({rate}%)</Text>
+                                                        <Text style={[styles.breakdownValue, { color: colors.text.primary }]}>
                                                             +{currency}{igst.toLocaleString()}
                                                         </Text>
                                                     </View>
@@ -909,14 +693,14 @@ export const SalesScreen: React.FC = () => {
                                                 return (
                                                     <>
                                                         <View style={styles.breakdownRow}>
-                                                            <Text style={[styles.breakdownLabel, { color: colors.text.muted }]}>CGST ({halfRate}%)</Text>
-                                                            <Text style={[styles.breakdownValue, { color: colors.text.secondary }]}>
+                                                            <Text style={[styles.breakdownLabel, { color: colors.text.secondary }]}>CGST ({halfRate}%)</Text>
+                                                            <Text style={[styles.breakdownValue, { color: colors.text.primary }]}>
                                                                 +{currency}{cgst.toLocaleString()}
                                                             </Text>
                                                         </View>
                                                         <View style={styles.breakdownRow}>
-                                                            <Text style={[styles.breakdownLabel, { color: colors.text.muted }]}>SGST ({halfRate}%)</Text>
-                                                            <Text style={[styles.breakdownValue, { color: colors.text.secondary }]}>
+                                                            <Text style={[styles.breakdownLabel, { color: colors.text.secondary }]}>SGST ({halfRate}%)</Text>
+                                                            <Text style={[styles.breakdownValue, { color: colors.text.primary }]}>
                                                                 +{currency}{cgst.toLocaleString()}
                                                             </Text>
                                                         </View>
@@ -925,13 +709,13 @@ export const SalesScreen: React.FC = () => {
                                             }
                                         })()}
                                         <View style={[styles.breakdownRow, styles.grandTotalRow]}>
-                                            <Text style={[styles.breakdownLabel, { color: colors.text.primary, fontWeight: 'bold' }]}>Grand Total</Text>
-                                            <Text style={[styles.breakdownValue, { color: colors.brand.primary, fontWeight: 'bold', fontSize: 18 }]}>
+                                            <Text style={[styles.breakdownLabel, { color: colors.text.primary, fontWeight: 'bold' }]}>Total Payable</Text>
+                                            <Text style={[styles.breakdownValue, { color: colors.brand.primary, fontWeight: 'bold' }]}>
                                                 {currency}{(() => {
-                                                    const subtotal = parseFloat(totalAmount) || 0;
-                                                    const dv2 = parseFloat(discountPercent) || 0;
-                                                    const discountAmt = discountPercent ? (discountType === 'flat' ? dv2 : subtotal * dv2 / 100) : 0;
-                                                    const taxable = subtotal - discountAmt;
+                                                    const sub = parseFloat(totalAmount) || 0;
+                                                    const dVal = parseFloat(discountPercent) || 0;
+                                                    const dAmt = discountType === 'flat' ? dVal : sub * dVal / 100;
+                                                    const taxable = sub - dAmt;
                                                     const taxAmt = settings.gstEnabled ? taxable * gstRate / 100 : 0;
                                                     return (taxable + taxAmt).toLocaleString();
                                                 })()}
@@ -942,22 +726,14 @@ export const SalesScreen: React.FC = () => {
 
                                 <Input
                                     label="Amount Paid"
-                                    placeholder="Leave empty for full payment"
+                                    placeholder="Amount handed over"
                                     keyboardType="numeric"
                                     value={paidAmount}
                                     onChangeText={setPaidAmount}
                                 />
 
-                                {paidAmount && totalAmount && parseFloat(paidAmount) < parseFloat(totalAmount) && (
-                                    <View style={styles.partialNote}>
-                                        <Text style={styles.partialNoteText}>
-                                            💡 Remaining {currency}{(parseFloat(totalAmount) - parseFloat(paidAmount)).toLocaleString()} will be added as credit
-                                        </Text>
-                                    </View>
-                                )}
-
                                 <PaymentMethodControl selected={paymentMethod} onChange={setPaymentMethod} colors={colors} />
-                                <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
+                                <Input label="Note" placeholder="Enter note" value={note} onChangeText={setNote} />
 
                                 <View style={styles.modalButtons}>
                                     <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={closeModal}>
@@ -972,8 +748,6 @@ export const SalesScreen: React.FC = () => {
                     </Animated.View>
                 </KeyboardAvoidingView>
             </Modal>
-
-
         </SafeAreaView>
     );
 };
@@ -982,122 +756,36 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.semantic.background },
     content: { flex: 1, paddingHorizontal: tokens.spacing.md },
     header: { paddingTop: tokens.spacing.md, paddingBottom: tokens.spacing.md },
-    headerTop: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingTop: tokens.spacing.md,
-        paddingBottom: tokens.spacing.md,
-    },
-    headerAddBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.semantic.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    headerAddBtn: { padding: tokens.spacing.xs, backgroundColor: colors.semantic.surface, borderRadius: tokens.radius.pill, borderWidth: 1, borderColor: colors.border.default },
     title: { fontSize: tokens.typography.sizes.xxl, color: colors.brand.secondary, fontFamily: tokens.typography.fontFamily.bold },
     date: { fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, marginTop: tokens.spacing.xxs, fontFamily: tokens.typography.fontFamily.medium },
-    totalCard: { backgroundColor: colors.brand.primary, marginBottom: tokens.spacing.md, padding: tokens.spacing.md },
+    totalCard: { backgroundColor: colors.semantic.error, marginBottom: tokens.spacing.md, padding: tokens.spacing.md },
     totalLabel: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, opacity: 0.9, fontFamily: tokens.typography.fontFamily.medium },
-    totalAmount: { fontSize: tokens.typography.sizes.xxl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold, marginTop: tokens.spacing.xxs },
+    totalAmount: { fontSize: tokens.typography.sizes.xxl, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
     listContent: { paddingBottom: 100 },
-
-    // Compact List Item
-    listItem: {
-        paddingVertical: 10,
-        paddingHorizontal: 4,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border.default,
-    },
-    listRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    listName: {
-        flex: 1,
-        fontSize: 14,
-        color: colors.text.primary,
-        fontFamily: tokens.typography.fontFamily.medium,
-        marginRight: 8,
-    },
-    amountRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    partialDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: colors.brand.primary,
-    },
-    listAmount: {
-        fontSize: 14,
-        color: colors.brand.secondary,
-        fontFamily: tokens.typography.fontFamily.bold,
-    },
-    shareButton: {
-        padding: 5,
-        marginLeft: 4,
-    },
-    listSubtitle: {
-        fontSize: 12,
-        color: colors.text.muted,
-        fontFamily: tokens.typography.fontFamily.regular,
-        marginTop: 2,
-    },
-
-    emptyContainer: { alignItems: 'center', paddingVertical: tokens.spacing.xxl },
-    emptyIconContainer: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: colors.semantic.soft,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: tokens.spacing.md
-    },
-    emptyText: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
-    emptySubtext: { fontSize: tokens.typography.sizes.sm, color: colors.text.muted, marginTop: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.regular },
-
-    floatingButton: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: colors.brand.primary, height: 52, minWidth: 200, borderRadius: 26, justifyContent: 'center', alignItems: 'center', paddingHorizontal: tokens.spacing.lg, ...tokens.shadow.floatingButton },
-    floatingButtonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-    floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.semibold },
-
+    listItem: { paddingVertical: tokens.spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border.default },
+    listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    listName: { flex: 1, fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
+    amountRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.xs },
+    listAmount: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
+    listSubtitle: { fontSize: tokens.typography.sizes.xs, color: colors.text.secondary, marginTop: 4 },
+    floatingButton: { position: 'absolute', bottom: 30, right: 20, backgroundColor: colors.brand.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30, ...tokens.shadow.floatingButton },
+    floatingButtonPressed: { opacity: 0.8, transform: [{ scale: tokens.motion.scale.pressIn }] },
+    floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.md, fontFamily: tokens.typography.fontFamily.bold },
+    emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 100 },
+    emptyIconContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: colors.semantic.soft, alignItems: 'center', justifyContent: 'center', marginBottom: tokens.spacing.md },
+    emptyText: { fontSize: 18, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
+    emptySubtext: { fontSize: 14, color: colors.text.muted, textAlign: 'center', marginTop: 8, paddingHorizontal: 40 },
     modalOverlay: { flex: 1, justifyContent: 'flex-end' },
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
-    bottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SCREEN_HEIGHT * 0.85 },
-    handleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
-    handleBar: { width: 40, height: 4, backgroundColor: colors.border.default, borderRadius: 2 },
-    sheetScroll: { maxHeight: SCREEN_HEIGHT * 0.75 },
-    sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
-    modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.md, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
-    sectionLabel: { fontSize: 12, fontFamily: tokens.typography.fontFamily.medium, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-    partialNote: { backgroundColor: colors.semantic.soft, padding: tokens.spacing.sm, borderRadius: tokens.radius.md, marginBottom: tokens.spacing.md },
-    partialNoteText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.regular },
-    modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: tokens.spacing.lg, gap: 12 },
-    modalBtn: { flex: 1, paddingVertical: 14, borderRadius: tokens.radius.md, alignItems: 'center' },
-    cancelBtn: { backgroundColor: colors.semantic.background },
-    cancelBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.semibold },
-    saveBtn: { backgroundColor: colors.brand.primary },
-    saveBtnText: { fontSize: tokens.typography.sizes.md, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
-    // Date Picker Modal Styles
-    datePickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-    datePickerCard: { backgroundColor: colors.semantic.surface, borderRadius: tokens.radius.lg, padding: tokens.spacing.lg, width: '85%', maxWidth: 340 },
-    datePickerTitle: { fontSize: tokens.typography.sizes.lg, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold, textAlign: 'center', marginBottom: tokens.spacing.xs },
-    datePickerHint: { fontSize: tokens.typography.sizes.xs, color: colors.text.muted, textAlign: 'center', marginBottom: tokens.spacing.md, fontFamily: tokens.typography.fontFamily.regular },
-    datePickerInput: { backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md, padding: tokens.spacing.md, fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium, textAlign: 'center', marginBottom: tokens.spacing.md },
-    datePickerButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    datePickerClearBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md },
-    datePickerClearText: { fontSize: tokens.typography.sizes.sm, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.medium },
-    datePickerActions: { flexDirection: 'row', gap: tokens.spacing.sm },
-    datePickerCancelBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.md, backgroundColor: colors.semantic.background, borderRadius: tokens.radius.md },
-    datePickerCancelText: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
-    datePickerSelectBtn: { paddingVertical: tokens.spacing.sm, paddingHorizontal: tokens.spacing.lg, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md },
-    datePickerSelectText: { fontSize: tokens.typography.sizes.sm, color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.semibold },
+    bottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: SHEET_HEIGHT },
+    handleContainer: { height: 30, alignItems: 'center', justifyContent: 'center' },
+    handleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border.default },
+    sheetScroll: { flex: 1 },
+    sheetContent: { padding: tokens.spacing.md, paddingBottom: 50 },
+    modalTitle: { fontSize: 20, fontFamily: tokens.typography.fontFamily.bold, color: colors.text.primary, marginBottom: tokens.spacing.md },
+    sectionLabel: { fontSize: 14, fontFamily: tokens.typography.fontFamily.semibold, marginTop: tokens.spacing.md, marginBottom: tokens.spacing.xs },
     // Multi-item styles
     selectedItemsList: { marginBottom: tokens.spacing.md },
     tableHeader: {
@@ -1180,74 +868,29 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         fontFamily: tokens.typography.fontFamily.semibold
     },
     quantityControls: { flexDirection: 'row', alignItems: 'center' },
-    qtyBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-    qtyValue: { width: 30, textAlign: 'center', fontSize: 14, fontFamily: tokens.typography.fontFamily.bold },
-    // Price breakdown styles
-    priceBreakdown: {
-        padding: tokens.spacing.md,
-        borderRadius: tokens.radius.md,
-        marginBottom: tokens.spacing.md,
-    },
-    breakdownRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 6,
-    },
-    breakdownLabel: {
-        fontSize: tokens.typography.sizes.sm,
-        fontFamily: tokens.typography.fontFamily.medium,
-    },
-    breakdownValue: {
-        fontSize: tokens.typography.sizes.md,
-        fontFamily: tokens.typography.fontFamily.semibold,
-    },
-    grandTotalRow: {
-        borderTopWidth: 1,
-        borderTopColor: colors.border.default,
-        marginTop: tokens.spacing.sm,
-        paddingTop: tokens.spacing.sm,
-    },
-    // Recent customers styles
-    recentCustomersContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: tokens.spacing.sm,
-        marginTop: tokens.spacing.xs,
-    },
-    recentLabel: {
-        fontSize: 12,
-        fontFamily: tokens.typography.fontFamily.medium,
-        marginRight: tokens.spacing.sm,
-    },
-    recentChipsRow: {
-        flexDirection: 'row',
-        gap: tokens.spacing.xs,
-    },
-    recentChip: {
-        paddingHorizontal: tokens.spacing.sm,
-        paddingVertical: 6,
-        borderRadius: 16,
-    },
-    recentChipText: {
-        fontSize: 12,
-        fontFamily: tokens.typography.fontFamily.medium,
-    },
-    // Print size selection styles
-    printSizeOption: {
-        padding: tokens.spacing.md,
-        borderRadius: tokens.radius.md,
-        marginBottom: tokens.spacing.sm,
-    },
-    printSizeText: {
-        fontSize: tokens.typography.sizes.md,
-        fontFamily: tokens.typography.fontFamily.semibold,
-    },
-    printSizeSubtext: {
-        fontSize: tokens.typography.sizes.xs,
-        fontFamily: tokens.typography.fontFamily.regular,
-        marginTop: 2,
-    },
+    qtyBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 15 },
+    qtyValue: { fontSize: 16, fontFamily: tokens.typography.fontFamily.bold, minWidth: 20, textAlign: 'center' },
+    priceBreakdown: { padding: 16, borderRadius: tokens.radius.md, marginTop: tokens.spacing.md, marginBottom: tokens.spacing.md },
+    breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    breakdownLabel: { fontSize: 14, fontFamily: tokens.typography.fontFamily.regular },
+    breakdownValue: { fontSize: 14, fontFamily: tokens.typography.fontFamily.medium },
+    grandTotalRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border.default },
+    modalButtons: { flexDirection: 'row', gap: 12, marginTop: tokens.spacing.xl },
+    modalBtn: { flex: 1, paddingVertical: 14, borderRadius: tokens.radius.md, alignItems: 'center' },
+    cancelBtn: { backgroundColor: colors.semantic.soft },
+    cancelBtnText: { color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
+    saveBtn: { backgroundColor: colors.brand.primary },
+    saveBtnText: { color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
+    datePickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+    datePickerCard: { backgroundColor: colors.semantic.surface, borderRadius: 20, padding: 20 },
+    datePickerTitle: { fontSize: 18, fontFamily: tokens.typography.fontFamily.bold, color: colors.text.primary, marginBottom: 15 },
+    datePickerInput: { borderBottomWidth: 1, borderBottomColor: colors.brand.primary, paddingVertical: 10, fontSize: 16, color: colors.text.primary, marginBottom: 20 },
+    datePickerButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    datePickerClearBtn: { padding: 10 },
+    datePickerClearText: { color: colors.semantic.error, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerActions: { flexDirection: 'row', gap: 15 },
+    datePickerCancelBtn: { padding: 10 },
+    datePickerCancelText: { color: colors.text.muted, fontFamily: tokens.typography.fontFamily.medium },
+    datePickerSelectBtn: { backgroundColor: colors.brand.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+    datePickerSelectText: { color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
 });
-
-export default SalesScreen;

@@ -149,7 +149,7 @@ const PartyLedger: React.FC<PartyLedgerProps> = ({ visible, onClose, partyName, 
     const handleDownloadStatement = async () => {
         const partyCredits = credits.filter(c => c.party === partyName);
         if (partyCredits.length > 0) {
-            await generateCreditReport(partyCredits[0], partyCredits, currency, settings);
+            await generateCreditReport(partyName, partyCredits, settings);
         }
     };
 

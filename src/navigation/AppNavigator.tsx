@@ -21,6 +21,8 @@ import {
     ReturnsScreen,
     BusinessProfileScreen,
     InvoicePreviewScreen,
+    PurchasesScreen,
+    UserManagerScreen,
 } from '../screens';
 import { tokens, useTheme } from '../theme';
 
@@ -217,6 +219,16 @@ export const AppNavigator: React.FC = () => {
                 <Tab.Screen
                     name="InvoicePreview"
                     component={InvoicePreviewScreen}
+                    options={{ tabBarButton: () => null }}
+                />
+                <Tab.Screen
+                    name="Purchases"
+                    component={PurchasesScreen}
+                    options={{ tabBarButton: () => null }}
+                />
+                <Tab.Screen
+                    name="UserManager"
+                    component={UserManagerScreen}
                     options={{ tabBarButton: () => null }}
                 />
             </Tab.Navigator>

@@ -1,56 +1,77 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { View, Text, StyleSheet, ViewStyle, Pressable } from 'react-native';
-import { tokens } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { tokens, useTheme } from '../theme';
 
 interface DashboardCardProps {
     title?: string;
-    icon?: React.ReactNode;
-    rightAction?: React.ReactNode;
-    children: React.ReactNode;
+    children: ReactNode;
     style?: ViewStyle;
+    renderHeaderRight?: () => ReactNode;
     onPress?: () => void;
+    gradient?: string[];
 }
 
 export const DashboardCard: React.FC<DashboardCardProps> = ({
     title,
-    icon,
-    rightAction,
     children,
     style,
+    renderHeaderRight,
     onPress,
+    gradient
 }) => {
-    const Container = onPress ? Pressable : View;
+    const { colors } = useTheme();
+
+    const Container = gradient ? LinearGradient : View;
+    const containerProps = gradient ? { colors: gradient, start: { x: 0, y: 0 }, end: { x: 1, y: 1 } } : {};
 
     return (
-        <Container
-            style={[styles.card, style]}
-            onPress={onPress}
-        >
-            {(title || icon || rightAction) && (
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        {icon && <View style={styles.iconContainer}>{icon}</View>}
-                        {title && <Text style={styles.title}>{title}</Text>}
-                    </View>
-                    {rightAction && <View style={styles.headerRight}>{rightAction}</View>}
-                </View>
-            )}
-            <View style={styles.content}>
-                {children}
-            </View>
-        </Container>
+        <View style={[styles.cardContainer, style]}>
+            <Pressable
+                onPress={onPress}
+                disabled={!onPress}
+                style={({ pressed }) => [
+                    styles.pressable,
+                    pressed && styles.pressed
+                ]}
+            >
+                {/* @ts-ignore - Dynamic component */}
+                <Container {...containerProps} style={[styles.cardContent, gradient && styles.gradientContent]}>
+                    {title || renderHeaderRight ? (
+                        <View style={styles.header}>
+                            {title ? <Text style={[styles.title, { color: gradient ? colors.text.inverse : colors.text.primary }]}>{title}</Text> : <View />}
+                            {renderHeaderRight && renderHeaderRight()}
+                        </View>
+                    ) : null}
+                    {children}
+                </Container>
+            </Pressable>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    card: {
-        backgroundColor: tokens.colors.semantic.surface,
+    cardContainer: {
+        marginBottom: tokens.spacing.md,
+        borderRadius: tokens.radius.xl,
+        ...tokens.shadow.card,
+        backgroundColor: tokens.colors.semantic.surface, // Elevate container with shadow and surface color
+    },
+    pressable: {
+        borderRadius: tokens.radius.xl,
+        overflow: 'hidden', // Ensure gradient/background respects border radius
+    },
+    pressed: {
+        opacity: 0.8,
+    },
+    cardContent: {
         borderRadius: tokens.radius.xl,
         padding: tokens.spacing.md,
-        marginBottom: tokens.spacing.md,
-        ...tokens.shadow.card,
         borderWidth: 1,
         borderColor: tokens.colors.border.default,
+    },
+    gradientContent: {
+        borderWidth: 0,
     },
     header: {
         flexDirection: 'row',
@@ -81,6 +102,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     content: {
-        // flex: 1, 
+        // Allow children to control height
     },
 });

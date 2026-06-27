@@ -9,6 +9,8 @@ export const tokens = {
         },
         semantic: {
             success: '#10B981', // Emerald
+            error: '#EF4444', // Red 500
+            warning: '#F59E0B', // Amber 500
             soft: '#F1F5F9', // Slate 100
             background: '#F8FAFC', // Slate 50
             surface: '#FFFFFF',

@@ -8,34 +8,53 @@ import {
     Alert,
 } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { Lock, Fingerprint, Delete } from 'lucide-react-native';
+import { Lock, Fingerprint, Delete, User as UserIcon, ArrowLeft } from 'lucide-react-native';
 import { tokens, useTheme } from '../theme';
+import { useApp } from '../context';
+import { User } from '../utils/storage';
 
 interface LockScreenProps {
     onUnlock: () => void;
+    storedPin?: string;
+    title?: string;
+    subtitle?: string;
+    onValidate?: (pin: string, userId?: string) => boolean | Promise<boolean>;
+    users?: User[];
 }
 
-export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
+export const LockScreen: React.FC<LockScreenProps> = ({
+    onUnlock,
+    storedPin,
+    title = 'MathNote',
+    subtitle = 'Enter PIN to unlock',
+    onValidate,
+    users
+}) => {
     const { colors } = useTheme();
+    const { settings } = useApp();
     const [pin, setPin] = useState('');
-    const [storedPin] = useState('1234'); // Default PIN - in production, fetch from SecureStore
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [hasBiometrics, setHasBiometrics] = useState(false);
     const [attempts, setAttempts] = useState(0);
     const maxAttempts = 5;
 
     const styles = React.useMemo(() => createStyles(colors), [colors]);
 
+    const shouldShowProfileSelect = users && users.length > 1 && !selectedUser;
+
     useEffect(() => {
-        checkBiometrics();
-    }, []);
+        if (settings.biometricEnabled) {
+            checkBiometrics();
+        }
+    }, [settings.biometricEnabled]);
 
     const checkBiometrics = async () => {
         const compatible = await LocalAuthentication.hasHardwareAsync();
         const enrolled = await LocalAuthentication.isEnrolledAsync();
         setHasBiometrics(compatible && enrolled);
 
-        // Auto-prompt biometrics on load
-        if (compatible && enrolled) {
+        // Auto-prompt biometrics on load if setting is ON
+        if (compatible && enrolled && settings.biometricEnabled) {
             await authenticateWithBiometrics();
         }
     };
@@ -57,14 +76,24 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
         }
     };
 
-    const handleKeyPress = useCallback((digit: string) => {
+    const handleKeyPress = useCallback(async (digit: string) => {
         if (pin.length >= 4) return;
 
         const newPin = pin + digit;
         setPin(newPin);
 
         if (newPin.length === 4) {
-            if (newPin === storedPin) {
+            let isValid = false;
+            if (onValidate) {
+                isValid = await onValidate(newPin, selectedUser?.id);
+            } else if (storedPin) {
+                isValid = newPin === storedPin;
+            } else {
+                // Fallback for global app lock if no storedPin/onValidate provided
+                isValid = newPin === '1234';
+            }
+
+            if (isValid) {
                 Vibration.vibrate(50);
                 onUnlock();
             } else {
@@ -78,7 +107,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                 setTimeout(() => setPin(''), 300);
             }
         }
-    }, [pin, storedPin, attempts, onUnlock]);
+    }, [pin, storedPin, onValidate, attempts, onUnlock, selectedUser]);
 
     const handleDelete = useCallback(() => {
         setPin(prev => prev.slice(0, -1));
@@ -152,14 +181,80 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
         );
     };
 
+    const getRoleColor = (role: string) => {
+        switch (role) {
+            case 'owner':
+                return colors.brand.primary;
+            case 'manager':
+                return '#6366F1';
+            default:
+                return '#64748B';
+        }
+    };
+
+    if (shouldShowProfileSelect) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <View style={styles.lockIcon}>
+                        <UserIcon size={32} color={colors.brand.primary} strokeWidth={2} />
+                    </View>
+                    <Text style={styles.title}>Select Profile</Text>
+                    <Text style={styles.subtitle}>Who is using MathNote?</Text>
+                </View>
+
+                <View style={styles.profileGrid}>
+                    {users.map(user => {
+                        const firstLetter = user.name ? user.name.charAt(0).toUpperCase() : 'U';
+                        return (
+                            <TouchableOpacity
+                                key={user.id}
+                                style={styles.profileCard}
+                                onPress={() => {
+                                    setSelectedUser(user);
+                                    setAttempts(0);
+                                }}
+                            >
+                                <View style={styles.avatar}>
+                                    <Text style={styles.avatarText}>{firstLetter}</Text>
+                                </View>
+                                <Text style={styles.profileName} numberOfLines={1}>
+                                    {user.name}
+                                </Text>
+                                <View style={[styles.roleBadge, { backgroundColor: getRoleColor(user.role) }]}>
+                                    <Text style={styles.roleText}>{user.role.toUpperCase()}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
+            {users && users.length > 1 && selectedUser && (
+                <TouchableOpacity 
+                    style={styles.backButton} 
+                    onPress={() => {
+                        setSelectedUser(null);
+                        setPin('');
+                    }}
+                >
+                    <ArrowLeft size={20} color={colors.text.primary} />
+                    <Text style={styles.backButtonText}>Profiles</Text>
+                </TouchableOpacity>
+            )}
+
             <View style={styles.header}>
                 <View style={styles.lockIcon}>
                     <Lock size={32} color={colors.brand.primary} strokeWidth={2} />
                 </View>
-                <Text style={styles.title}>MathNote</Text>
-                <Text style={styles.subtitle}>Enter PIN to unlock</Text>
+                <Text style={styles.title}>{title}</Text>
+                <Text style={styles.subtitle}>
+                    {selectedUser ? `Enter PIN for ${selectedUser.name}` : subtitle}
+                </Text>
             </View>
 
             {renderPinDots()}
@@ -205,6 +300,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         color: colors.text.secondary,
         marginTop: tokens.spacing.xs,
         fontFamily: tokens.typography.fontFamily.regular,
+        textAlign: 'center',
     },
     dotsContainer: {
         flexDirection: 'row',
@@ -260,6 +356,78 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         color: colors.brand.primary,
         marginTop: tokens.spacing.lg,
         fontFamily: tokens.typography.fontFamily.regular,
+    },
+    profileGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 20,
+        width: '100%',
+        maxWidth: 320,
+        marginTop: tokens.spacing.md,
+    },
+    profileCard: {
+        width: 130,
+        padding: tokens.spacing.md,
+        backgroundColor: colors.semantic.surface,
+        borderRadius: tokens.radius.lg,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: colors.border.default,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    avatar: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: colors.semantic.soft,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: tokens.spacing.sm,
+    },
+    avatarText: {
+        fontSize: 24,
+        color: colors.brand.primary,
+        fontFamily: tokens.typography.fontFamily.bold,
+    },
+    profileName: {
+        fontSize: tokens.typography.sizes.md,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.semibold,
+        marginBottom: tokens.spacing.xs,
+        textAlign: 'center',
+        width: '100%',
+    },
+    roleBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: tokens.radius.sm,
+    },
+    roleText: {
+        fontSize: 9,
+        color: '#FFF',
+        fontFamily: tokens.typography.fontFamily.bold,
+        letterSpacing: 0.5,
+    },
+    backButton: {
+        position: 'absolute',
+        top: 60,
+        left: tokens.spacing.lg,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        padding: 8,
+        borderRadius: tokens.radius.md,
+        backgroundColor: colors.semantic.soft,
+    },
+    backButtonText: {
+        fontSize: tokens.typography.sizes.sm,
+        color: colors.text.primary,
+        fontFamily: tokens.typography.fontFamily.semibold,
     },
 });
 

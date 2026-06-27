@@ -5,4 +5,7 @@ export { DateFilter, filterByDateRange, getFilterLabel } from './DateFilter';
 export type { DateFilterType } from './DateFilter';
 export { ContactPicker } from './ContactPicker';
 export { ProductPicker } from './ProductPicker';
+export { QuickAddGrid } from './QuickAddGrid';
+export * from './BarcodeScannerModal';
 export { default as PartyLedger } from './PartyLedger';
+export { DashboardCard } from './DashboardCard';

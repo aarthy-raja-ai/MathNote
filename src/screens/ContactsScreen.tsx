@@ -17,7 +17,7 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Pencil, Trash2, Phone, Search, Users, User, X } from 'lucide-react-native';
+import { Trash2, Phone, Search, Users, User, X } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
@@ -337,7 +337,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     searchInput: { flex: 1, marginLeft: tokens.spacing.sm, fontSize: tokens.typography.sizes.md, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.regular, height: '100%' },
 
     filterContainer: { flexDirection: 'row', paddingBottom: tokens.spacing.md, gap: 8 },
-    filterChip: { paddingHorizontal: tokens.spacing.md, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.semantic.soft, borderSize: 1, borderColor: colors.border.default },
+    filterChip: { paddingHorizontal: tokens.spacing.md, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.semantic.soft, borderWidth: 1, borderColor: colors.border.default },
     filterText: { fontSize: 13, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium },
 
     listContent: { paddingBottom: 180 },

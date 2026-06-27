@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, ViewStyle, Animated } from 'react-native';
+import { View, StyleSheet, ViewStyle, Animated, StyleProp } from 'react-native';
 import { tokens } from '../theme';
 
 interface CardProps {
     children: React.ReactNode;
-    style?: ViewStyle;
+    style?: StyleProp<ViewStyle>;
     animated?: boolean;
 }
 

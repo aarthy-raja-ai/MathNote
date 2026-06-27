@@ -15,6 +15,7 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import {
     Package,
     Search,
@@ -27,16 +28,19 @@ import {
     ArrowDown,
     Tag,
     ShoppingBag,
-    Calculator
+    Calculator,
+    Maximize,
 } from 'lucide-react-native';
 import { tokens, useTheme } from '../theme';
 import { useApp } from '../context';
-import { Card, Input } from '../components';
+import { Card, Input, BarcodeScannerModal } from '../components';
 import { Product } from '../utils/storage';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const InventoryScreen: React.FC = () => {
+    const route = useRoute<any>();
+    const navigation = useNavigation<any>();
     const { products, addProduct, updateProduct, deleteProduct, settings } = useApp();
     const { colors } = useTheme();
     const [search, setSearch] = useState('');
@@ -50,9 +54,44 @@ export const InventoryScreen: React.FC = () => {
     const [costPrice, setCostPrice] = useState('');
     const [category, setCategory] = useState('');
     const [minStockLevel, setMinStockLevel] = useState('');
+    const [barcode, setBarcode] = useState('');
+    const [isScannerVisible, setIsScannerVisible] = useState(false);
 
     const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (route?.params?.barcode) {
+            const scannedBarcode = route.params.barcode;
+            if (navigation) {
+                navigation.setParams({ barcode: undefined });
+            }
+            setEditingProduct(null);
+            setName('');
+            setStock('');
+            setUnitPrice('');
+            setCostPrice('');
+            setCategory('');
+            setMinStockLevel('5');
+            setBarcode(scannedBarcode);
+            setModalVisible(true);
+            Animated.spring(sheetAnim, {
+                toValue: 0,
+                useNativeDriver: true,
+                tension: 50,
+                friction: 8,
+            }).start();
+        } else if (route?.params?.productId) {
+            const prodId = route.params.productId;
+            if (navigation) {
+                navigation.setParams({ productId: undefined });
+            }
+            const product = products.find(p => p.id === prodId);
+            if (product) {
+                openModal(product);
+            }
+        }
+    }, [route?.params]);
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -72,18 +111,20 @@ export const InventoryScreen: React.FC = () => {
         const totalItems = products.length;
         const lowStock = products.filter(p => p.stock <= (p.minStockLevel || 5)).length;
         const totalValue = products.reduce((sum, p) => sum + (p.stock * p.unitPrice), 0);
-        return { totalItems, lowStock, totalValue };
+        const potentialProfit = products.reduce((sum, p) => sum + (p.stock * (p.unitPrice - (p.costPrice || 0))), 0);
+        return { totalItems, lowStock, totalValue, potentialProfit };
     }, [products]);
 
     const openModal = (product?: Product) => {
         if (product) {
             setEditingProduct(product);
             setName(product.name);
-            setStock(product.stock.toString());
-            setUnitPrice(product.unitPrice.toString());
-            setCostPrice(product.costPrice?.toString() || '');
+            setStock((product.stock ?? '').toString());
+            setUnitPrice((product.unitPrice ?? '').toString());
+            setCostPrice((product.costPrice ?? '').toString());
             setCategory(product.category || '');
-            setMinStockLevel(product.minStockLevel?.toString() || '5');
+            setMinStockLevel((product.minStockLevel ?? '5').toString());
+            setBarcode(product.barcode || '');
         } else {
             setEditingProduct(null);
             setName('');
@@ -92,6 +133,7 @@ export const InventoryScreen: React.FC = () => {
             setCostPrice('');
             setCategory('');
             setMinStockLevel('5');
+            setBarcode('');
         }
         setModalVisible(true);
         Animated.spring(sheetAnim, {
@@ -125,6 +167,7 @@ export const InventoryScreen: React.FC = () => {
             costPrice: costPrice ? parseFloat(costPrice) : undefined,
             category: category.trim() || 'General',
             minStockLevel: minStockLevel ? parseInt(minStockLevel) : undefined,
+            barcode: barcode.trim() || undefined,
         };
 
         if (editingProduct) {
@@ -168,7 +211,7 @@ export const InventoryScreen: React.FC = () => {
                     </View>
                     <View style={styles.priceInfo}>
                         <Text style={[styles.priceValue, { color: colors.brand.primary }]}>
-                            {settings.currency}{item.unitPrice.toLocaleString()}
+                            {settings.currency}{(item.unitPrice || 0).toLocaleString()}
                         </Text>
                         <Text style={[styles.unitLabel, { color: colors.text.muted }]}>per unit</Text>
                     </View>
@@ -184,9 +227,17 @@ export const InventoryScreen: React.FC = () => {
                     <View style={styles.stockColumn}>
                         <Text style={[styles.stockLabel, { color: colors.text.muted }]}>Value</Text>
                         <Text style={[styles.stockValue, { color: colors.text.primary }]}>
-                            {settings.currency}{(item.stock * item.unitPrice).toLocaleString()}
+                            {settings.currency}{((item.stock || 0) * (item.unitPrice || 0)).toLocaleString()}
                         </Text>
                     </View>
+                    {item.costPrice !== undefined && item.costPrice > 0 && (
+                        <View style={styles.stockColumn}>
+                            <Text style={[styles.stockLabel, { color: colors.text.muted }]}>Margin</Text>
+                            <Text style={[styles.stockValue, { color: colors.semantic.success }]}>
+                                {(((item.unitPrice - item.costPrice) / item.unitPrice) * 100).toFixed(0)}%
+                            </Text>
+                        </View>
+                    )}
                     <View style={styles.actionColumn}>
                         <Pressable onPress={() => openModal(item)} style={styles.itemActionBtn}>
                             <Edit2 size={18} color={colors.brand.secondary} />
@@ -214,7 +265,12 @@ export const InventoryScreen: React.FC = () => {
                 </View>
 
                 {/* Stats Row */}
-                <View style={styles.statsRow}>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.statsScroll}
+                    contentContainerStyle={styles.statsRow}
+                >
                     <Card style={styles.statCard}>
                         <Text style={[styles.statLabel, { color: colors.text.muted }]}>Total Items</Text>
                         <Text style={[styles.statValue, { color: colors.text.primary }]}>{stats.totalItems}</Text>
@@ -227,11 +283,17 @@ export const InventoryScreen: React.FC = () => {
                     </Card>
                     <Card style={styles.statCard}>
                         <Text style={[styles.statLabel, { color: colors.text.muted }]}>Total Value</Text>
-                        <Text style={[styles.statValue, { color: colors.brand.primary, fontSize: 16 }]}>
+                        <Text style={[styles.statValue, { color: colors.brand.primary }]}>
                             {settings.currency}{stats.totalValue.toLocaleString()}
                         </Text>
                     </Card>
-                </View>
+                    <Card style={styles.statCard}>
+                        <Text style={[styles.statLabel, { color: colors.text.muted }]}>Pot. Profit</Text>
+                        <Text style={[styles.statValue, { color: colors.semantic.success }]}>
+                            {settings.currency}{stats.potentialProfit.toLocaleString()}
+                        </Text>
+                    </Card>
+                </ScrollView>
 
                 {/* Search Bar */}
                 <View style={[styles.searchContainer, { backgroundColor: colors.semantic.soft }]}>
@@ -315,6 +377,22 @@ export const InventoryScreen: React.FC = () => {
 
                                 <Input label="Category" placeholder="e.g. Electronics" value={category} onChangeText={setCategory} />
 
+                                <View style={styles.formRow}>
+                                    <View style={{ flex: 1 }}>
+                                        <Input
+                                            label="Barcode / UPC"
+                                            placeholder="Scan or enter barcode"
+                                            value={barcode}
+                                            onChangeText={setBarcode}
+                                            renderRight={() => (
+                                                <Pressable onPress={() => setIsScannerVisible(true)} style={{ padding: 4 }}>
+                                                    <Maximize size={20} color={colors.brand.primary} />
+                                                </Pressable>
+                                            )}
+                                        />
+                                    </View>
+                                </View>
+
                                 <View style={styles.modalButtons}>
                                     <Pressable style={[styles.modalBtn, styles.cancelBtn, { backgroundColor: colors.semantic.soft }]} onPress={closeModal}>
                                         <Text style={[styles.cancelBtnText, { color: colors.text.primary }]}>Cancel</Text>
@@ -328,6 +406,16 @@ export const InventoryScreen: React.FC = () => {
                     </Animated.View>
                 </KeyboardAvoidingView>
             </Modal>
+
+            <BarcodeScannerModal
+                visible={isScannerVisible}
+                onClose={() => setIsScannerVisible(false)}
+                onScan={(data) => {
+                    setBarcode(data);
+                    setIsScannerVisible(false);
+                }}
+                colors={colors}
+            />
         </SafeAreaView>
     );
 };
@@ -339,10 +427,11 @@ const styles = StyleSheet.create({
     title: { fontSize: 28, fontFamily: tokens.typography.fontFamily.bold },
     subtitle: { fontSize: 14, fontFamily: tokens.typography.fontFamily.regular, marginTop: 4 },
     iconWrapper: { width: 56, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-    statsRow: { flexDirection: 'row', gap: tokens.spacing.sm, marginBottom: tokens.spacing.lg },
-    statCard: { flex: 1, padding: tokens.spacing.md, alignItems: 'center' },
+    statsScroll: { marginBottom: tokens.spacing.xs, flexGrow: 0, flexShrink: 0 },
+    statsRow: { gap: tokens.spacing.sm, paddingRight: tokens.spacing.lg, paddingLeft: 6, paddingVertical: 12 },
+    statCard: { width: 130, padding: tokens.spacing.md, alignItems: 'center' },
     statLabel: { fontSize: 10, fontFamily: tokens.typography.fontFamily.medium, textTransform: 'uppercase', marginBottom: 4 },
-    statValue: { fontSize: 20, fontFamily: tokens.typography.fontFamily.bold },
+    statValue: { fontSize: 18, fontFamily: tokens.typography.fontFamily.bold },
     searchContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: tokens.spacing.md, height: 50, borderRadius: 12, marginBottom: tokens.spacing.lg },
     searchInput: { flex: 1, marginLeft: 10, fontSize: 16, fontFamily: tokens.typography.fontFamily.regular, height: '100%' },
     listContent: { paddingBottom: 100 },

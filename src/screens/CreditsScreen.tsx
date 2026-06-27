@@ -69,7 +69,7 @@ export const CreditsScreen: React.FC = () => {
             return;
         }
         setEditingCredit(credit);
-        setAmount(credit.amount.toString());
+        setAmount((credit.amount ?? '').toString());
         setParty(credit.party);
         setType(credit.type);
         setPaymentMode(credit.paymentMode || 'Cash');
@@ -141,7 +141,7 @@ export const CreditsScreen: React.FC = () => {
     };
 
     const handleWhatsAppReminder = (credit: Credit) => {
-        const dueAmount = credit.amount - (credit.paidAmount || 0);
+        const dueAmount = (credit.amount || 0) - (credit.paidAmount || 0);
         const message = `Hello ${credit.party}, this is a friendly reminder from MathNote regarding your pending balance of ${currency}${dueAmount.toLocaleString()}. Please let us know if you have any questions. Thank you!`;
         const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
 
@@ -161,7 +161,7 @@ export const CreditsScreen: React.FC = () => {
         return credits
             .filter(c => {
                 const matchesSearch = c.party.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    c.amount.toString().includes(searchQuery);
+                    (c.amount ?? '').toString().includes(searchQuery);
                 return matchesSearch;
             })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -201,15 +201,15 @@ export const CreditsScreen: React.FC = () => {
             }
 
             groups[partyKey].credits.push(credit);
-            const dueAmount = credit.amount - (credit.paidAmount || 0);
+            const dueAmount = (credit.amount || 0) - (credit.paidAmount || 0);
 
             if (credit.type === 'given') {
-                groups[partyKey].totalGiven += credit.amount;
+                groups[partyKey].totalGiven += (credit.amount || 0);
                 if (credit.status === 'pending') {
                     groups[partyKey].dueGiven += dueAmount;
                 }
             } else {
-                groups[partyKey].totalTaken += credit.amount;
+                groups[partyKey].totalTaken += (credit.amount || 0);
                 if (credit.status === 'pending') {
                     groups[partyKey].dueTaken += dueAmount;
                 }
@@ -271,7 +271,7 @@ export const CreditsScreen: React.FC = () => {
     const renderCreditItem = (item: Credit, isSubItem: boolean = false) => {
         const linkedSale = getLinkedSale(item);
         const isToday = item.date === today;
-        const dueAmount = item.amount - (item.paidAmount || 0);
+        const dueAmount = (item.amount || 0) - (item.paidAmount || 0);
 
         // Build subtitle parts
         const subtitleParts: string[] = [];
@@ -297,7 +297,7 @@ export const CreditsScreen: React.FC = () => {
                         )}
                     </View>
                     <Text style={styles.subItemAmount}>
-                        {currency} {item.amount.toLocaleString()}
+                        {currency} {(item.amount || 0).toLocaleString()}
                     </Text>
                     <View style={styles.amountRow}>
                         {linkedSale && <Link size={10} color={colors.brand.secondary} strokeWidth={2} />}
@@ -629,7 +629,7 @@ export const CreditsScreen: React.FC = () => {
                                 renderItem={({ item }) => (
                                     <View style={styles.paymentItem}>
                                         <View>
-                                            <Text style={styles.paymentAmount}>{currency}{item.amount.toLocaleString()}</Text>
+                                            <Text style={styles.paymentAmount}>{currency}{(item.amount || 0).toLocaleString()}</Text>
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
                                                 <Text style={styles.paymentDate}>{new Date(item.date).toLocaleDateString('en-IN')}</Text>
                                                 {item.paymentMode && (
@@ -1016,6 +1016,20 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     reportButtonText: {
         fontSize: 11,
         color: colors.brand.secondary,
+        fontFamily: tokens.typography.fontFamily.medium,
+    },
+    statementButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 4,
+        paddingHorizontal: tokens.spacing.sm,
+        backgroundColor: colors.brand.secondary,
+        borderRadius: tokens.radius.sm,
+    },
+    statementButtonText: {
+        fontSize: 11,
+        color: colors.text.inverse,
         fontFamily: tokens.typography.fontFamily.medium,
     },
 });

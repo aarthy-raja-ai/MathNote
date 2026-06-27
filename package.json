@@ -13,6 +13,7 @@
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.9.0",
     "@react-navigation/native": "^7.1.26",
+    "@supabase/supabase-js": "^2.98.0",
     "expo": "~54.0.30",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
@@ -35,6 +36,7 @@
     "react-native-safe-area-context": "^5.6.2",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
+    "react-native-url-polyfill": "^3.0.0",
     "react-native-webview": "^13.16.0"
   },
   "devDependencies": {
