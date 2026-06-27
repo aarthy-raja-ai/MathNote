@@ -29,6 +29,8 @@ import {
 } from 'lucide-react-native';
 import { tokens, useTheme } from '../theme';
 import { useAuth } from '../context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../services/supabaseClient';
 
 const INDIAN_STATES = [
     'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -57,7 +59,12 @@ export const RegisterScreen: React.FC = () => {
     const [address, setAddress] = useState('');
     const [gstin, setGstin] = useState('');
 
-    // Step 2 Form State (Account Credentials)
+    // Step 2 Form State (Cloud Sync Setup)
+    const [enableSync, setEnableSync] = useState(false);
+    const [supabaseUrl, setSupabaseUrl] = useState('');
+    const [supabaseKey, setSupabaseKey] = useState('');
+
+    // Step 3 Form State (Account Credentials)
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -83,7 +90,18 @@ export const RegisterScreen: React.FC = () => {
         return Object.keys(errs).length === 0;
     };
 
-    const validateStep2 = (): boolean => {
+    const validateStep2Sync = (): boolean => {
+        if (!enableSync) return true;
+        const errs: Record<string, string> = {};
+        if (!supabaseUrl.trim()) errs.supabaseUrl = 'Supabase Project URL is required';
+        else if (!supabaseUrl.trim().startsWith('http')) errs.supabaseUrl = 'URL must start with http:// or https://';
+        if (!supabaseKey.trim()) errs.supabaseKey = 'Supabase Anon Key is required';
+        
+        setErrors(errs);
+        return Object.keys(errs).length === 0;
+    };
+
+    const validateAccountSetup = (): boolean => {
         const errs: Record<string, string> = {};
         if (!username.trim()) errs.username = 'Username is required';
         else if (username.trim().length < 3) errs.username = 'Username must be at least 3 characters';
@@ -104,20 +122,32 @@ export const RegisterScreen: React.FC = () => {
     const handleNext = () => {
         if (step === 1 && validateStep1()) {
             setStep(2);
+        } else if (step === 2 && validateStep2Sync()) {
+            setStep(3);
         }
     };
 
     const handleBack = () => {
-        if (step === 2) {
-            setStep(1);
+        if (step > 1) {
+            setStep(step - 1);
         }
     };
 
     const handleRegister = async () => {
-        if (!validateStep2()) return;
+        if (!validateAccountSetup()) return;
 
         setIsLoading(true);
         try {
+            if (enableSync) {
+                await AsyncStorage.setItem('SUPABASE_URL', supabaseUrl.trim());
+                await AsyncStorage.setItem('SUPABASE_KEY', supabaseKey.trim());
+                supabase.reset();
+            } else {
+                await AsyncStorage.removeItem('SUPABASE_URL');
+                await AsyncStorage.removeItem('SUPABASE_KEY');
+                supabase.reset();
+            }
+
             const profile = {
                 businessName: businessName.trim(),
                 ownerName: ownerName.trim(),
@@ -169,6 +199,11 @@ export const RegisterScreen: React.FC = () => {
                             <View style={[styles.progressLine, step >= 2 && styles.progressLineActive]} />
                             <View style={[styles.progressStep, step >= 2 && styles.progressStepActive]}>
                                 <Text style={[styles.progressNumber, step >= 2 && styles.progressNumberActive]}>2</Text>
+                                <Text style={styles.progressLabel}>Sync</Text>
+                            </View>
+                            <View style={[styles.progressLine, step >= 3 && styles.progressLineActive]} />
+                            <View style={[styles.progressStep, step >= 3 && styles.progressStepActive]}>
+                                <Text style={[styles.progressNumber, step >= 3 && styles.progressNumberActive]}>3</Text>
                                 <Text style={styles.progressLabel}>Account</Text>
                             </View>
                         </View>
@@ -272,8 +307,96 @@ export const RegisterScreen: React.FC = () => {
                             </View>
                         )}
 
-                        {/* STEP 2: CREDENTIALS */}
+                        {/* STEP 2: CLOUD SYNC */}
                         {step === 2 && (
+                            <View style={styles.form}>
+                                <Text style={[styles.label, { textAlign: 'center', fontSize: 16, marginBottom: 8 }]}>
+                                    Real-time Cloud Sync
+                                </Text>
+                                <Text style={{ color: colors.text.secondary, textAlign: 'center', fontSize: 13, marginBottom: 20 }}>
+                                    Do you want to sync your data across multiple devices (Desktop & Mobile)?
+                                </Text>
+
+                                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+                                    <TouchableOpacity
+                                        activeOpacity={0.8}
+                                        style={[
+                                            styles.backButton,
+                                            { flex: 1, height: 50 },
+                                            enableSync && { borderColor: colors.brand.primary, backgroundColor: colors.semantic.soft }
+                                        ]}
+                                        onPress={() => { setEnableSync(true); setErrors({}); }}
+                                    >
+                                        <Text style={[styles.backButtonText, { color: enableSync ? colors.brand.primary : colors.text.primary }]}>
+                                            Yes, sync devices
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        activeOpacity={0.8}
+                                        style={[
+                                            styles.backButton,
+                                            { flex: 1, height: 50 },
+                                            !enableSync && { borderColor: colors.brand.primary, backgroundColor: colors.semantic.soft }
+                                        ]}
+                                        onPress={() => { setEnableSync(false); setErrors({}); }}
+                                    >
+                                        <Text style={[styles.backButtonText, { color: !enableSync ? colors.brand.primary : colors.text.primary }]}>
+                                            No, local only
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {enableSync && (
+                                    <View style={{ marginTop: 8 }}>
+                                        <Text style={{ fontSize: 12, color: colors.text.secondary, marginBottom: 12 }}>
+                                            Enter your Supabase connection parameters below:
+                                        </Text>
+                                        <Text style={styles.label}>Supabase Project URL *</Text>
+                                        <View style={[styles.inputContainer, errors.supabaseUrl && styles.inputError]}>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="https://your-project.supabase.co"
+                                                placeholderTextColor={colors.text.muted}
+                                                value={supabaseUrl}
+                                                onChangeText={text => { setSupabaseUrl(text); setErrors(prev => { const n = {...prev}; delete n.supabaseUrl; return n; }); }}
+                                                autoCapitalize="none"
+                                                autoCorrect={false}
+                                            />
+                                        </View>
+                                        {errors.supabaseUrl && <Text style={styles.fieldError}>{errors.supabaseUrl}</Text>}
+
+                                        <Text style={styles.label}>Supabase Anon Key *</Text>
+                                        <View style={[styles.inputContainer, errors.supabaseKey && styles.inputError]}>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="your-supabase-anon-key"
+                                                placeholderTextColor={colors.text.muted}
+                                                value={supabaseKey}
+                                                onChangeText={text => { setSupabaseKey(text); setErrors(prev => { const n = {...prev}; delete n.supabaseKey; return n; }); }}
+                                                autoCapitalize="none"
+                                                autoCorrect={false}
+                                            />
+                                        </View>
+                                        {errors.supabaseKey && <Text style={styles.fieldError}>{errors.supabaseKey}</Text>}
+                                    </View>
+                                )}
+
+                                <View style={styles.buttonRow}>
+                                    <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+                                        <ArrowLeft size={20} color={colors.text.primary} />
+                                        <Text style={[styles.backButtonText, { color: colors.text.primary }]}>Back</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity style={[styles.primaryButton, { flex: 2, marginTop: 0 }]} onPress={handleNext}>
+                                        <Text style={styles.buttonText}>Continue</Text>
+                                        <ArrowRight size={20} color="#FFF" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* STEP 3: CREDENTIALS */}
+                        {step === 3 && (
                             <View style={styles.form}>
                                 <Text style={styles.label}>Username *</Text>
                                 <View style={[styles.inputContainer, errors.username && styles.inputError]}>
