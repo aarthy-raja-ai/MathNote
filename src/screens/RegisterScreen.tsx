@@ -11,7 +11,11 @@ import {
     ScrollView,
     Modal,
     FlatList,
+    Linking,
+    Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { SQL_SCHEMA } from '../utils/supabaseSchema';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     Building2,
@@ -74,6 +78,14 @@ export const RegisterScreen: React.FC = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [isStateModalVisible, setIsStateModalVisible] = useState(false);
+    const [showGuide, setShowGuide] = useState(false);
+    const [copiedSQL, setCopiedSQL] = useState(false);
+
+    const handleCopySQL = async () => {
+        await Clipboard.setStringAsync(SQL_SCHEMA);
+        setCopiedSQL(true);
+        setTimeout(() => setCopiedSQL(false), 2000);
+    };
 
     const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -378,6 +390,73 @@ export const RegisterScreen: React.FC = () => {
                                             />
                                         </View>
                                         {errors.supabaseKey && <Text style={styles.fieldError}>{errors.supabaseKey}</Text>}
+
+                                        <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border.default, paddingTop: 16 }}>
+                                            <TouchableOpacity
+                                                style={{
+                                                    borderWidth: 1,
+                                                    borderColor: colors.border.default,
+                                                    paddingVertical: 10,
+                                                    borderRadius: tokens.radius.md,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    backgroundColor: colors.semantic.soft
+                                                }}
+                                                onPress={() => setShowGuide(!showGuide)}
+                                            >
+                                                <Text style={{ fontSize: tokens.typography.sizes.sm, color: colors.text.primary, fontFamily: tokens.typography.fontFamily.medium }}>
+                                                    {showGuide ? 'Hide Setup Guide' : 'Show Setup Guide & SQL Script'}
+                                                </Text>
+                                            </TouchableOpacity>
+
+                                            {showGuide && (
+                                                <View style={{ marginTop: 12 }}>
+                                                    <Text style={{ fontSize: tokens.typography.sizes.sm, color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.semibold, marginBottom: 8 }}>
+                                                        4-Step Sync Guide:
+                                                    </Text>
+                                                    
+                                                    <View style={{ gap: 12 }}>
+                                                        <Text style={{ fontSize: tokens.typography.sizes.xs, color: colors.text.primary, lineHeight: 18 }}>
+                                                            <Text style={{ fontFamily: tokens.typography.fontFamily.bold }}>1. </Text>
+                                                            Create a free project at <Text style={{ color: colors.brand.primary, textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://supabase.com')}>supabase.com</Text>.
+                                                        </Text>
+
+                                                        <View>
+                                                            <Text style={{ fontSize: tokens.typography.sizes.xs, color: colors.text.primary, lineHeight: 18, marginBottom: 6 }}>
+                                                                <Text style={{ fontFamily: tokens.typography.fontFamily.bold }}>2. </Text>
+                                                                Open the <Text style={{ fontFamily: tokens.typography.fontFamily.bold }}>SQL Editor</Text> on your Supabase dashboard, paste the setup script, and click Run.
+                                                            </Text>
+                                                            <TouchableOpacity
+                                                                style={{
+                                                                    backgroundColor: colors.semantic.soft,
+                                                                    borderWidth: 1,
+                                                                    borderColor: colors.border.default,
+                                                                    paddingVertical: 6,
+                                                                    paddingHorizontal: 12,
+                                                                    borderRadius: tokens.radius.sm,
+                                                                    alignSelf: 'flex-start'
+                                                                }}
+                                                                onPress={handleCopySQL}
+                                                            >
+                                                                <Text style={{ fontSize: tokens.typography.sizes.xs, color: colors.text.primary }}>
+                                                                    {copiedSQL ? '✅ Copied!' : '📋 Copy SQL Script'}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        </View>
+
+                                                        <Text style={{ fontSize: tokens.typography.sizes.xs, color: colors.text.primary, lineHeight: 18 }}>
+                                                            <Text style={{ fontFamily: tokens.typography.fontFamily.bold }}>3. </Text>
+                                                            Go to your Project Settings → API, copy the Project URL and the anon public API key.
+                                                        </Text>
+
+                                                        <Text style={{ fontSize: tokens.typography.sizes.xs, color: colors.text.primary, lineHeight: 18 }}>
+                                                            <Text style={{ fontFamily: tokens.typography.fontFamily.bold }}>4. </Text>
+                                                            Paste them in the fields above and press Continue.
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            )}
+                                        </View>
                                     </View>
                                 )}
 

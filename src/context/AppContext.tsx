@@ -3,7 +3,6 @@ import { Alert } from 'react-native';
 import storage, { Sale, Expense, Credit, Settings, CreditPayment, Contact, Product, SaleItem, SaleReturn, Purchase } from '../utils/storage';
 import { syncService } from '../services/syncService';
 import { supabase } from '../services/supabaseClient';
-import googleDriveService from '../utils/googleDrive';
 
 interface AppState {
     sales: Sale[];
@@ -100,7 +99,6 @@ interface AppContextType extends AppState {
     getBalance: () => number;
     getTodayProfit: () => number;
     getProfitForRange: (days?: number) => number;
-    triggerCloudSync: () => Promise<void>;
     // Credit computed
     getCreditPaymentsReceived: () => number;  // Money received from given credits
     getCreditPaymentsMade: () => number;       // Money paid for taken credits
@@ -855,41 +853,6 @@ const getTodayPurchases = useCallback(() => {
         .reduce((sum, p) => sum + (p.paidAmount ?? p.totalAmount ?? 0), 0);
 }, [state.purchases]);
 
-const triggerCloudSync = useCallback(async () => {
-    if (!state.settings.autoCloudBackup) return;
-
-    try {
-        // Using the same mock token as SettingsScreen (USER_ACCESS_TOKEN)
-        const mockToken = "USER_ACCESS_TOKEN";
-        const success = await googleDriveService.uploadBackup(mockToken);
-        if (success) {
-            console.log('Auto cloud backup successful');
-        }
-    } catch (error) {
-        console.error('Auto cloud backup error:', error);
-    }
-}, [state.settings.autoCloudBackup]);
-
-// Automatically trigger sync when data changes
-useEffect(() => {
-    const hasData = state.sales.length > 0 || state.expenses.length > 0 || state.products.length > 0;
-    if (state.settings.autoCloudBackup && hasData) {
-        const timer = setTimeout(() => {
-            triggerCloudSync();
-        }, 5000); // 5s debounce to avoid too many uploads during rapid edits
-        return () => clearTimeout(timer);
-    }
-}, [
-    state.sales,
-    state.expenses,
-    state.credits,
-    state.products,
-    state.contacts,
-    state.returns,
-    state.purchases,
-    state.settings.autoCloudBackup,
-    triggerCloudSync
-]);
 
 const getTodayProfit = useCallback(() => {
     const today = getToday();
@@ -1085,7 +1048,6 @@ return (
             deletePurchase,
             getCashBalance,
             getUPIBalance,
-            triggerCloudSync,
         }}
     >
         {children}

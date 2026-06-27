@@ -25,7 +25,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Constants from 'expo-constants';
 import storage from '../utils/storage';
-import googleDriveService from '../utils/googleDrive';
+import { SQL_SCHEMA } from '../utils/supabaseSchema';
 
 const CURRENCIES = [
     { code: '₹', name: 'Indian Rupee' },
@@ -35,6 +35,51 @@ const CURRENCIES = [
 ];
 
 const CONTACT_EMAIL = 'raarthyraja@gmail.com';
+
+// Simple Base64 encoder/decoder for secure backups
+const base64Encode = (str: string): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let result = '';
+    for (let i = 0; i < str.length; i += 3) {
+        const c1 = str.charCodeAt(i);
+        const c2 = i + 1 < str.length ? str.charCodeAt(i + 1) : NaN;
+        const c3 = i + 2 < str.length ? str.charCodeAt(i + 2) : NaN;
+        
+        const byte1 = c1 >> 2;
+        const byte2 = ((c1 & 3) << 4) | (isNaN(c2) ? 0 : c2 >> 4);
+        const byte3 = isNaN(c2) ? 64 : (((c2 & 15) << 2) | (isNaN(c3) ? 0 : c3 >> 6));
+        const byte4 = isNaN(c3) ? 64 : c3 & 63;
+        
+        result += chars.charAt(byte1) + chars.charAt(byte2) + 
+                  (byte3 === 64 ? '=' : chars.charAt(byte3)) + 
+                  (byte4 === 64 ? '=' : chars.charAt(byte4));
+    }
+    return result;
+};
+
+const base64Decode = (str: string): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let result = '';
+    const cleanStr = str.replace(/=+$/, '');
+    for (let i = 0; i < cleanStr.length; i += 4) {
+        const c1 = chars.indexOf(cleanStr.charAt(i));
+        const c2 = chars.indexOf(cleanStr.charAt(i + 1));
+        const c3 = i + 2 < cleanStr.length ? chars.indexOf(cleanStr.charAt(i + 2)) : 0;
+        const c4 = i + 3 < cleanStr.length ? chars.indexOf(cleanStr.charAt(i + 3)) : 0;
+        
+        const byte1 = (c1 << 2) | (c2 >> 4);
+        const byte2 = ((c2 & 15) << 4) | (c3 >> 2);
+        const byte3 = ((c3 & 3) << 6) | c4;
+        
+        result += String.fromCharCode(byte1);
+        if (i + 2 < cleanStr.length) result += String.fromCharCode(byte2);
+        if (i + 3 < cleanStr.length) result += String.fromCharCode(byte3);
+    }
+    return result;
+};
+
+const utf8ToBase64 = (str: string): string => base64Encode(unescape(encodeURIComponent(str)));
+const base64ToUtf8 = (str: string): string => decodeURIComponent(escape(base64Decode(str)));
 
 export const SettingsScreen: React.FC = () => {
     const { settings, updateSettings, clearAllData, restoreData } = useApp();
@@ -46,8 +91,6 @@ export const SettingsScreen: React.FC = () => {
     const [showPrintSizePicker, setShowPrintSizePicker] = useState(false);
     const [showTemplatePicker, setShowTemplatePicker] = useState(false);
     const [remindersEnabled, setRemindersEnabled] = useState(settings.remindersEnabled ?? false);
-    const [isCloudSyncing, setIsCloudSyncing] = useState(false);
-    const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
     const [supabaseUrl, setSupabaseUrl] = useState('');
     const [supabaseKey, setSupabaseKey] = useState('');
     const [showGuide, setShowGuide] = useState(false);
@@ -121,23 +164,24 @@ export const SettingsScreen: React.FC = () => {
     const handleBackup = async () => {
         try {
             const data = await storage.exportAllData();
-            const jsonData = JSON.stringify(data, null, 2);
+            const jsonStr = JSON.stringify(data);
+            const encodedData = utf8ToBase64(jsonStr);
 
             // Create file in cache directory
-            const fileName = `mathnote_backup_${new Date().toISOString().split('T')[0]}.json`;
+            const fileName = `mathnote_backup_${new Date().toISOString().split('T')[0]}.mathnote`;
             const filePath = `${FileSystem.cacheDirectory}${fileName}`;
 
-            await FileSystem.writeAsStringAsync(filePath, jsonData);
+            await FileSystem.writeAsStringAsync(filePath, encodedData);
 
             // Check if sharing is available
             if (await Sharing.isAvailableAsync()) {
                 await Sharing.shareAsync(filePath, {
-                    mimeType: 'application/json',
+                    mimeType: 'application/octet-stream',
                     dialogTitle: 'Save Backup File',
                 });
             } else {
                 // Fallback to clipboard
-                await Clipboard.setStringAsync(jsonData);
+                await Clipboard.setStringAsync(encodedData);
                 Alert.alert(
                     'Backup Ready',
                     `Sharing not available. Data copied to clipboard.\n\nSales: ${(data.sales || []).length}\nExpenses: ${(data.expenses || []).length}\nCredits: ${(data.credits || []).length}`,
@@ -149,76 +193,26 @@ export const SettingsScreen: React.FC = () => {
         }
     };
 
-    const handleCloudBackup = async () => {
-        // Mock token for demonstration - in a real app, this would come from expo-auth-session
-        const mockToken = "USER_ACCESS_TOKEN";
-
-        setIsCloudSyncing(true);
-        try {
-            const success = await googleDriveService.uploadBackup(mockToken);
-            if (success) {
-                const now = new Date().toLocaleString();
-                setLastCloudSync(now);
-                Alert.alert('Cloud Sync Success', `Data backed up to Google Drive at ${now}`);
-            } else {
-                Alert.alert('Cloud Sync Failed', 'Make sure you are signed in and have internet access.');
-            }
-        } catch (error) {
-            Alert.alert('Error', 'An unexpected error occurred during cloud sync.');
-        } finally {
-            setIsCloudSyncing(false);
-        }
-    };
-
-    const handleCloudRestore = async () => {
-        const mockToken = "USER_ACCESS_TOKEN";
-
-        setIsCloudSyncing(true);
-        try {
-            const info = await googleDriveService.getBackupInfo(mockToken);
-            if (!info) {
-                Alert.alert('No Backup Found', 'No cloud backup was found for this account.');
-                return;
-            }
-
-            Alert.alert(
-                'Restore from Cloud',
-                `Found backup from ${new Date(info.modifiedTime).toLocaleString()}.\n\nThis will replace all local data. Continue?`,
-                [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                        text: 'Restore Now',
-                        style: 'destructive',
-                        onPress: async () => {
-                            const success = await googleDriveService.downloadAndRestore(mockToken);
-                            if (success) {
-                                Alert.alert('Success', 'Data restored from cloud successfully!');
-                                navigation.navigate('Dashboard');
-                            } else {
-                                Alert.alert('Error', 'Failed to restore data from cloud.');
-                            }
-                        }
-                    }
-                ]
-            );
-        } catch (error) {
-            Alert.alert('Error', 'Failed to connect to Google Drive.');
-        } finally {
-            setIsCloudSyncing(false);
-        }
-    };
-
     const handleRestore = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/json',
+                type: '*/*',
                 copyToCacheDirectory: true,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const fileUri = result.assets[0].uri;
                 const fileContent = await FileSystem.readAsStringAsync(fileUri);
-                const data = JSON.parse(fileContent);
+                
+                let parsedText = fileContent.trim();
+                if (!parsedText.startsWith('{')) {
+                    try {
+                        parsedText = base64ToUtf8(parsedText);
+                    } catch (e) {
+                        // ignore and try raw
+                    }
+                }
+                const data = JSON.parse(parsedText);
 
                 // Validate backup data
                 if (!data || typeof data !== 'object') {
@@ -248,7 +242,7 @@ export const SettingsScreen: React.FC = () => {
                 );
             }
         } catch (error) {
-            Alert.alert('Error', 'Failed to read backup file. Make sure it\'s a valid JSON file.');
+            Alert.alert('Error', 'Failed to read backup file. Make sure it\'s a valid backup file.');
         }
     };
 
@@ -657,70 +651,6 @@ export const SettingsScreen: React.FC = () => {
 
                     {canManageSettings && (
                         <>
-                            <Text style={styles.sectionTitle}>Cloud Storage</Text>
-                            <Card style={styles.settingCard}>
-                                <TouchableOpacity
-                                    style={styles.settingRow}
-                                    onPress={handleCloudBackup}
-                                    disabled={isCloudSyncing}
-                                >
-                                    <View style={styles.settingInfo}>
-                                        <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
-                                            <CloudUpload size={20} color={colors.brand.primary} strokeWidth={2} />
-                                        </View>
-                                        <View>
-                                            <View style={styles.row}>
-                                                <Text style={styles.settingLabel}>Backup to Drive</Text>
-                                                {isCloudSyncing && <ActivityIndicator size="small" color={colors.brand.primary} style={{ marginLeft: 10 }} />}
-                                            </View>
-                                            <Text style={styles.settingDescription}>
-                                                {lastCloudSync ? `Last synced: ${lastCloudSync}` : 'Export data to Google Drive'}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
-                                </TouchableOpacity>
-                            </Card>
-
-                            <Card style={styles.settingCard}>
-                                <View style={styles.settingRow}>
-                                    <View style={styles.settingInfo}>
-                                        <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
-                                            <RefreshCw size={20} color={colors.brand.primary} strokeWidth={2} />
-                                        </View>
-                                        <View>
-                                            <Text style={styles.settingLabel}>Auto Cloud Sync</Text>
-                                            <Text style={styles.settingDescription}>Automatically backup on every change</Text>
-                                        </View>
-                                    </View>
-                                    <Switch
-                                        value={Boolean(settings.autoCloudBackup)}
-                                        onValueChange={(val) => updateSettings({ autoCloudBackup: val })}
-                                        trackColor={{ false: colors.border.default, true: colors.brand.primary }}
-                                        thumbColor={colors.semantic.surface}
-                                    />
-                                </View>
-                            </Card>
-
-                            <Card style={styles.settingCard}>
-                                <TouchableOpacity
-                                    style={styles.settingRow}
-                                    onPress={handleCloudRestore}
-                                    disabled={isCloudSyncing}
-                                >
-                                    <View style={styles.settingInfo}>
-                                        <View style={[styles.iconWrapper, { backgroundColor: colors.semantic.success + '15' }]}>
-                                            <CloudDownload size={20} color={colors.semantic.success} strokeWidth={2} />
-                                        </View>
-                                        <View>
-                                            <Text style={styles.settingLabel}>Restore from Drive</Text>
-                                            <Text style={styles.settingDescription}>Import data from Google Drive</Text>
-                                        </View>
-                                    </View>
-                                    <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
-                                </TouchableOpacity>
-                            </Card>
-
                             <Text style={styles.sectionTitle}>Real-time Cloud Sync (Supabase)</Text>
                             <Card style={styles.settingCard}>
                                 <View style={styles.syncConfig}>
@@ -838,8 +768,8 @@ export const SettingsScreen: React.FC = () => {
                                             <Share2 size={20} color={colors.text.primary} strokeWidth={2} />
                                         </View>
                                         <View>
-                                            <Text style={styles.settingLabel}>Export JSON</Text>
-                                            <Text style={styles.settingDescription}>Share data file manually</Text>
+                                            <Text style={styles.settingLabel}>Export MathNote Backup</Text>
+                                            <Text style={styles.settingDescription}>Export secure backup (.mathnote) file</Text>
                                         </View>
                                     </View>
                                     <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
@@ -854,7 +784,7 @@ export const SettingsScreen: React.FC = () => {
                                         </View>
                                         <View>
                                             <Text style={styles.settingLabel}>Restore Data</Text>
-                                            <Text style={styles.settingDescription}>Import data from a backup JSON file</Text>
+                                            <Text style={styles.settingDescription}>Import data from a .mathnote or .json backup file</Text>
                                         </View>
                                     </View>
                                     <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
@@ -976,223 +906,3 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
 });
 
 export default SettingsScreen;
-
-const SQL_SCHEMA = `-- MathNote Unified Supabase Database Setup Script
-
--- 1. Sales Table
-CREATE TABLE IF NOT EXISTS sales (
-  id TEXT PRIMARY KEY,
-  date DATE,
-  "customerName" TEXT,
-  "customerState" TEXT,
-  "customerAddress" TEXT,
-  "customerGSTIN" TEXT,
-  "customerPhone" TEXT,
-  "totalAmount" NUMERIC,
-  "paidAmount" NUMERIC,
-  "paymentMethod" TEXT,
-  note TEXT,
-  items JSONB,
-  "invoiceNumber" TEXT,
-  subtotal NUMERIC,
-  "discountTotal" NUMERIC,
-  "discountType" TEXT,
-  "taxTotal" NUMERIC,
-  cgst NUMERIC,
-  sgst NUMERIC,
-  igst NUMERIC,
-  "gstRate" NUMERIC,
-  "taxMode" TEXT,
-  "returnIds" JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 2. Products Table
-CREATE TABLE IF NOT EXISTS products (
-  id TEXT PRIMARY KEY,
-  name TEXT,
-  brand TEXT,
-  sku TEXT,
-  barcode TEXT,
-  "hsnCode" TEXT,
-  category TEXT,
-  price NUMERIC,
-  "costPrice" NUMERIC,
-  stock NUMERIC,
-  unit TEXT,
-  "lowStockThreshold" NUMERIC,
-  "taxRate" NUMERIC,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 3. Contacts Table
-CREATE TABLE IF NOT EXISTS contacts (
-  id TEXT PRIMARY KEY,
-  name TEXT,
-  phone TEXT,
-  email TEXT,
-  address TEXT,
-  state TEXT,
-  gstin TEXT,
-  type TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 4. Expenses Table
-CREATE TABLE IF NOT EXISTS expenses (
-  id TEXT PRIMARY KEY,
-  date DATE,
-  category TEXT,
-  amount NUMERIC,
-  note TEXT,
-  "vendorName" TEXT,
-  "vendorId" TEXT,
-  "paymentMethod" TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 5. Credits Table
-CREATE TABLE IF NOT EXISTS credits (
-  id TEXT PRIMARY KEY,
-  party TEXT,
-  type TEXT,
-  amount NUMERIC,
-  "paidAmount" NUMERIC,
-  status TEXT,
-  date DATE,
-  "dueDate" DATE,
-  note TEXT,
-  "linkedSaleId" TEXT,
-  "linkedPurchaseId" TEXT,
-  payments JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 6. Returns Table
-CREATE TABLE IF NOT EXISTS returns (
-  id TEXT PRIMARY KEY,
-  "saleId" TEXT,
-  date DATE,
-  party TEXT,
-  amount NUMERIC,
-  note TEXT,
-  items JSONB,
-  "linkedCreditId" TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 7. Purchases Table
-CREATE TABLE IF NOT EXISTS purchases (
-  id TEXT PRIMARY KEY,
-  date DATE,
-  "vendorName" TEXT,
-  "vendorState" TEXT,
-  "totalAmount" NUMERIC,
-  "paidAmount" NUMERIC,
-  "paymentMethod" TEXT,
-  note TEXT,
-  items JSONB,
-  "linkedExpenseId" TEXT,
-  "linkedCreditId" TEXT,
-  cgst NUMERIC,
-  sgst NUMERIC,
-  igst NUMERIC,
-  "gstRate" NUMERIC,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 8. Quotations Table
-CREATE TABLE IF NOT EXISTS quotations (
-  id TEXT PRIMARY KEY,
-  date DATE,
-  "quotationNumber" TEXT,
-  "customerName" TEXT,
-  "customerState" TEXT,
-  "customerAddress" TEXT,
-  "customerGSTIN" TEXT,
-  "customerPhone" TEXT,
-  items JSONB,
-  subtotal NUMERIC,
-  "discountTotal" NUMERIC,
-  "discountType" TEXT,
-  "taxTotal" NUMERIC,
-  cgst NUMERIC,
-  sgst NUMERIC,
-  igst NUMERIC,
-  "gstRate" NUMERIC,
-  "taxMode" TEXT,
-  "grandTotal" NUMERIC,
-  "validUntil" DATE,
-  terms TEXT,
-  status TEXT,
-  "convertedSaleId" TEXT,
-  note TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 9. Purchase Orders Table
-CREATE TABLE IF NOT EXISTS purchase_orders (
-  id TEXT PRIMARY KEY,
-  date DATE,
-  "poNumber" TEXT,
-  "vendorName" TEXT,
-  "vendorState" TEXT,
-  items JSONB,
-  subtotal NUMERIC,
-  "taxTotal" NUMERIC,
-  cgst NUMERIC,
-  sgst NUMERIC,
-  igst NUMERIC,
-  "gstRate" NUMERIC,
-  "grandTotal" NUMERIC,
-  "expectedDate" DATE,
-  status TEXT,
-  "convertedPurchaseId" TEXT,
-  note TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 10. Attendance Table
-CREATE TABLE IF NOT EXISTS attendance (
-  id TEXT PRIMARY KEY,
-  "staffId" TEXT,
-  "staffName" TEXT,
-  date DATE,
-  status TEXT,
-  note TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 11. Users Table (Auth credentials)
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  username TEXT,
-  password TEXT,
-  pin TEXT,
-  role TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 12. Business Profile Table
-CREATE TABLE IF NOT EXISTS business_profile (
-  id TEXT PRIMARY KEY,
-  "businessName" TEXT,
-  "ownerName" TEXT,
-  phone TEXT,
-  email TEXT,
-  address TEXT,
-  state TEXT,
-  city TEXT,
-  pincode TEXT,
-  gstin TEXT,
-  "panNumber" TEXT,
-  category TEXT,
-  "taxType" TEXT,
-  "logoBase64" TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- ENABLE REALTIME REPLICATION FOR ALL TABLES
-ALTER PUBLICATION supabase_realtime ADD TABLE sales, products, contacts, expenses, credits, returns, purchases, quotations, purchase_orders, attendance, users, business_profile;
-`;
