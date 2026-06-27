@@ -95,7 +95,10 @@ const getItemsHTML = (sale: Sale, currency: string, isThermal: boolean) => {
   if (sale.items && sale.items.length > 0) {
     return sale.items.map(item => `
       <tr>
-        <td>${item.productName}</td>
+        <td>
+          ${item.brand ? `<span style="font-size: 9px; color: #6366f1; font-weight: 600; text-transform: uppercase; display: block; margin-bottom: 2px;">${item.brand}</span>` : ''}
+          ${item.productName}
+        </td>
         <td style="text-align: center;">${item.quantity}</td>
         ${!isThermal ? `<td style="text-align: right;">${currency}${item.unitPrice.toLocaleString()}</td>` : ''}
         <td style="text-align: right;">${currency}${(item.quantity * item.unitPrice).toLocaleString()}</td>

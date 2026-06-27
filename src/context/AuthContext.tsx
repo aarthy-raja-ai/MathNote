@@ -118,6 +118,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         const initAuth = async () => {
             const savedUsers = settings.users || [];
+            
+            // Auto-assign owner role to the first user if no owner exists
+            const hasOwner = savedUsers.some(u => u.role === 'owner');
+            if (savedUsers.length > 0 && !hasOwner) {
+                savedUsers[0].role = 'owner';
+                await updateSettings({ users: [...savedUsers] });
+            }
+
             setUsers(savedUsers);
             
             const current = savedUsers.find(u => u.id === settings.currentUserId);

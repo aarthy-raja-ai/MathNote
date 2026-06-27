@@ -224,6 +224,7 @@ export const SalesScreen: React.FC = () => {
             const newItem: SaleItem = {
                 productId: product.id,
                 productName: product.name,
+                brand: product.brand,
                 quantity: 1,
                 unitPrice: product.unitPrice,
                 costPrice: product.costPrice,

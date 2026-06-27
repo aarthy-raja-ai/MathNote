@@ -209,6 +209,7 @@ export const storage = {
 export interface SaleItem {
     productId: string;
     productName: string;
+    brand?: string;
     quantity: number;
     unitPrice: number;
     costPrice?: number;
@@ -341,6 +342,7 @@ export interface Contact {
 export interface Product {
     id: string;
     name: string;
+    brand?: string;
     stock: number;
     unitPrice: number;
     costPrice?: number;
