@@ -11,11 +11,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Trash2 } from 'lucide-react-native';
 import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { SaleReturn } from '../utils/storage';
 
 export const ReturnsScreen: React.FC = () => {
     const { returns, deleteReturn, settings } = useApp();
+    const { canDelete } = useAuth();
     const { colors } = useTheme();
     const currency = settings.currency;
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -37,9 +38,11 @@ export const ReturnsScreen: React.FC = () => {
                     </View>
                     <View style={styles.amountCol}>
                         <Text style={styles.amountText}>{currency} {(item.amount || 0).toLocaleString()}</Text>
-                        <Pressable onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
-                            <Trash2 size={18} color={colors.semantic.error} />
-                        </Pressable>
+                        {canDelete && (
+                            <Pressable onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
+                                <Trash2 size={18} color={colors.semantic.error} />
+                            </Pressable>
+                        )}
                     </View>
                 </View>
                 {item.note && <Text style={styles.noteText}>{item.note}</Text>}

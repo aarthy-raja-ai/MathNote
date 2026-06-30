@@ -32,7 +32,7 @@ import {
     Maximize,
 } from 'lucide-react-native';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { Card, Input, BarcodeScannerModal } from '../components';
 import { Product } from '../utils/storage';
 
@@ -42,6 +42,7 @@ export const InventoryScreen: React.FC = () => {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
     const { products, addProduct, updateProduct, deleteProduct, settings } = useApp();
+    const { canDelete, canViewReports } = useAuth();
     const { colors } = useTheme();
     const [search, setSearch] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
@@ -230,7 +231,7 @@ export const InventoryScreen: React.FC = () => {
                             {settings.currency}{((item.stock || 0) * (item.unitPrice || 0)).toLocaleString()}
                         </Text>
                     </View>
-                    {item.costPrice !== undefined && item.costPrice > 0 && (
+                    {canViewReports && item.costPrice !== undefined && item.costPrice > 0 && (
                         <View style={styles.stockColumn}>
                             <Text style={[styles.stockLabel, { color: colors.text.muted }]}>Margin</Text>
                             <Text style={[styles.stockValue, { color: colors.semantic.success }]}>
@@ -242,9 +243,11 @@ export const InventoryScreen: React.FC = () => {
                         <Pressable onPress={() => openModal(item)} style={styles.itemActionBtn}>
                             <Edit2 size={18} color={colors.brand.secondary} />
                         </Pressable>
-                        <Pressable onPress={() => handleDelete(item.id, item.name)} style={styles.itemActionBtn}>
-                            <Trash2 size={18} color={colors.semantic.error} />
-                        </Pressable>
+                        {canDelete && (
+                            <Pressable onPress={() => handleDelete(item.id, item.name)} style={styles.itemActionBtn}>
+                                <Trash2 size={18} color={colors.semantic.error} />
+                            </Pressable>
+                        )}
                     </View>
                 </View>
             </Card>

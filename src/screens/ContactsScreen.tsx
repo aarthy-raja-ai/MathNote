@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Trash2, Phone, Search, Users, User, X } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { Contact } from '../utils/storage';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -30,6 +30,7 @@ type ContactType = 'Customer' | 'Vendor' | 'Both';
 
 export const ContactsScreen: React.FC = () => {
     const { contacts, addContact, updateContact, deleteContact } = useApp();
+    const { canDelete } = useAuth();
     const { colors } = useTheme();
 
     // UI State
@@ -170,9 +171,11 @@ export const ContactsScreen: React.FC = () => {
                         <Text style={styles.listNotes} numberOfLines={1}>{item.notes}</Text>
                     ) : null}
                 </View>
-                <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.deleteAction}>
-                    <Trash2 size={20} color={colors.semantic.error + '90'} />
-                </TouchableOpacity>
+                {canDelete && (
+                    <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.deleteAction}>
+                        <Trash2 size={20} color={colors.semantic.error + '90'} />
+                    </TouchableOpacity>
+                )}
             </Pressable>
         );
     };

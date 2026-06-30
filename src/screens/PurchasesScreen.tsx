@@ -22,7 +22,7 @@ import { Pencil, Trash2, ShoppingCart, Package, Plus } from 'lucide-react-native
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { Purchase, Product, SaleItem } from '../utils/storage';
 import { evaluateMath } from '../utils/mathEvaluator';
 
@@ -69,6 +69,7 @@ const segmentStyles = StyleSheet.create({
 export const PurchasesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const { purchases, addPurchase, updatePurchase, deletePurchase, settings, contacts, products } = useApp();
+    const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -239,6 +240,10 @@ export const PurchasesScreen: React.FC = () => {
     };
 
     const handleDelete = (id: string) => {
+        if (!canDelete) {
+            Alert.alert('Access Denied', 'You do not have permission to delete purchase records.');
+            return;
+        }
         Alert.alert('Delete Purchase', 'This will rollback stock increments. Continue?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => deletePurchase(id) },

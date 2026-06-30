@@ -19,12 +19,13 @@ import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, Link, Pencil, Trash2, 
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, PartyLedger } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { Credit, CreditPayment } from '../utils/storage';
 import { generateCreditReport } from '../utils/invoiceGenerator';
 
 export const CreditsScreen: React.FC = () => {
     const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment, contacts } = useApp();
+    const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -77,6 +78,10 @@ export const CreditsScreen: React.FC = () => {
     };
 
     const handleDelete = (credit: Credit) => {
+        if (!canDelete) {
+            Alert.alert('Access Denied', 'You do not have permission to delete credit records.');
+            return;
+        }
         if (credit.linkedSaleId) {
             Alert.alert('Linked Credit', 'This credit is linked to a sale. Delete the sale to remove this credit.');
             return;

@@ -22,7 +22,7 @@ import { Pencil, Trash2, Share2, FileText, RotateCcw, TrendingUp, Percent, Zap, 
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker, QuickAddGrid } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { Sale, Product, SaleItem } from '../utils/storage';
 import { evaluateMath } from '../utils/mathEvaluator';
 
@@ -71,6 +71,7 @@ export const SalesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { sales, addSale, updateSale, deleteSale, addReturn, settings, updateSettings, contacts, products, returns } = useApp();
+    const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -279,6 +280,10 @@ export const SalesScreen: React.FC = () => {
     };
 
     const handleDelete = (id: string) => {
+        if (!canDelete) {
+            Alert.alert('Access Denied', 'You do not have permission to delete sales records.');
+            return;
+        }
         Alert.alert('Delete Sale', 'This will also delete any linked credit. Continue?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => deleteSale(id) },

@@ -19,7 +19,7 @@ import { Utensils, Car, ShoppingCart, Lightbulb, Home, Briefcase, Package, Penci
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker } from '../components';
 import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useApp } from '../context';
+import { useApp, useAuth } from '../context';
 import { Expense, Contact } from '../utils/storage';
 
 // Business Categories
@@ -47,6 +47,7 @@ const ALL_CATEGORIES = [...BUSINESS_CATEGORIES, ...PERSONAL_CATEGORIES];
 
 export const ExpensesScreen: React.FC = () => {
     const { expenses, addExpense, updateExpense, deleteExpense, settings, contacts } = useApp();
+    const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -96,6 +97,10 @@ export const ExpensesScreen: React.FC = () => {
     };
 
     const handleDelete = (id: string) => {
+        if (!canDelete) {
+            Alert.alert('Access Denied', 'You do not have permission to delete expense records.');
+            return;
+        }
         Alert.alert('Delete Expense', 'Are you sure you want to delete this expense?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => deleteExpense(id) },
