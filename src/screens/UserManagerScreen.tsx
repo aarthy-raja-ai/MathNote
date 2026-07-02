@@ -26,6 +26,8 @@ export const UserManagerScreen: React.FC = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [name, setName] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
     const [role, setRole] = useState<UserRole>('staff');
     const [pin, setPin] = useState('');
 
@@ -34,6 +36,8 @@ export const UserManagerScreen: React.FC = () => {
     const handleAddUser = () => {
         setEditingUser(null);
         setName('');
+        setUsername('');
+        setPassword('');
         setRole('staff');
         setPin('');
         setModalVisible(true);
@@ -42,25 +46,35 @@ export const UserManagerScreen: React.FC = () => {
     const handleEditUser = (user: User) => {
         setEditingUser(user);
         setName(user.name);
+        setUsername(user.username || '');
+        setPassword('');
         setRole(user.role);
         setPin(user.pin);
         setModalVisible(true);
     };
 
     const handleSave = async () => {
-        if (!name.trim() || pin.length !== 4) {
-            Alert.alert('Error', 'Please enter a valid name and 4-digit PIN');
-            return;
-        }
+        if (!name.trim()) { Alert.alert('Error', 'Please enter a valid name'); return; }
+        if (!username.trim()) { Alert.alert('Error', 'Please enter a valid username'); return; }
+        if (pin.length !== 4) { Alert.alert('Error', 'PIN must be exactly 4 digits'); return; }
 
         if (editingUser) {
-            await updateUser(editingUser.id, { name, role, pin });
+            const updates: Record<string, any> = { name, username: username.trim(), role, pin };
+            if (password.trim()) {
+                if (password.length < 4) { Alert.alert('Error', 'Password must be at least 4 characters'); return; }
+                updates.passwordPlain = password;
+            }
+            await updateUser(editingUser.id, updates);
             Alert.alert('Success', 'User updated successfully');
         } else {
-            await addUser(name, role, pin);
+            if (!password.trim()) { Alert.alert('Error', 'Please enter a password'); return; }
+            if (password.length < 4) { Alert.alert('Error', 'Password must be at least 4 characters'); return; }
+            await addUser(name, username.trim(), password, role, pin);
             Alert.alert('Success', 'New user added successfully');
         }
         setPin('');
+        setUsername('');
+        setPassword('');
         setModalVisible(false);
     };
 
@@ -86,10 +100,13 @@ export const UserManagerScreen: React.FC = () => {
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <ChevronLeft size={24} color={colors.text.primary} />
                 </TouchableOpacity>
-                <View>
+                <View style={{ flex: 1 }}>
                     <Text style={styles.title}>User Management</Text>
                     <Text style={styles.subtitle}>Manage roles and access</Text>
                 </View>
+                <TouchableOpacity onPress={handleAddUser} style={styles.addHeaderBtn}>
+                    <Plus size={24} color={colors.brand.primary} />
+                </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.content}>
@@ -145,6 +162,23 @@ export const UserManagerScreen: React.FC = () => {
                             onChangeText={setName}
                         />
 
+                        <Input
+                            label="Username"
+                            placeholder="e.g. ravi_staff"
+                            value={username}
+                            onChangeText={setUsername}
+                            autoCapitalize="none"
+                        />
+
+                        <Input
+                            label={editingUser ? "Password (leave blank to keep current)" : "Password"}
+                            placeholder={editingUser ? "Leave blank to keep unchanged" : "At least 4 characters"}
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry
+                            autoCapitalize="none"
+                        />
+
                         <Text style={styles.label}>Role</Text>
                         <View style={styles.roleSelector}>
                             {(['staff', 'manager', 'owner'] as UserRole[]).map((r) => (
@@ -188,6 +222,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.semantic.background },
     header: { flexDirection: 'row', alignItems: 'center', padding: tokens.spacing.md },
     backBtn: { marginRight: tokens.spacing.md },
+    addHeaderBtn: { padding: 8, borderRadius: 20, backgroundColor: colors.brand.primary + '10' },
     title: { fontSize: 24, paddingVertical: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.bold, color: colors.text.primary },
     subtitle: { fontSize: 14, color: colors.text.muted, fontFamily: tokens.typography.fontFamily.regular },
     content: { flex: 1, paddingHorizontal: tokens.spacing.md },
@@ -215,6 +250,7 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 3.84,
+        zIndex: 10,
     },
     fabText: { color: colors.text.inverse, marginLeft: 8, fontSize: 16, fontFamily: tokens.typography.fontFamily.bold },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },

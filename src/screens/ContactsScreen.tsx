@@ -29,7 +29,7 @@ const SHEET_HEIGHT = SCREEN_HEIGHT * 0.75;
 type ContactType = 'Customer' | 'Vendor' | 'Both';
 
 export const ContactsScreen: React.FC = () => {
-    const { contacts, addContact, updateContact, deleteContact } = useApp();
+    const { contacts, addContact, updateContact, deleteContact, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
 
@@ -134,13 +134,14 @@ export const ContactsScreen: React.FC = () => {
     const filteredContacts = useMemo(() => {
         return contacts
             .filter(c => {
+                const matchesCompany = (c.companyId || 'default') === selectedCompanyId;
                 const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     c.phone?.includes(searchQuery);
                 const matchesFilter = activeFilter === 'All' || c.type === activeFilter || c.type === 'Both';
-                return matchesSearch && matchesFilter;
+                return matchesCompany && matchesSearch && matchesFilter;
             })
             .sort((a, b) => a.name.localeCompare(b.name));
-    }, [contacts, searchQuery, activeFilter]);
+    }, [contacts, searchQuery, activeFilter, selectedCompanyId]);
 
     const renderContactItem = ({ item }: { item: Contact }) => {
         const typeColor = item.type === 'Customer' ? colors.semantic.success :

@@ -25,6 +25,7 @@ import { tokens, useTheme } from '../theme';
 import { useApp, useAuth } from '../context';
 import { Sale, Product, SaleItem } from '../utils/storage';
 import { evaluateMath } from '../utils/mathEvaluator';
+import { getFinancialYear, getNextSequenceNumber } from '../utils/fyHelpers';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.70;
@@ -70,7 +71,7 @@ const segmentStyles = StyleSheet.create({
 export const SalesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { sales, addSale, updateSale, deleteSale, addReturn, settings, updateSettings, contacts, products, returns } = useApp();
+    const { sales, addSale, updateSale, deleteSale, addReturn, settings, updateSettings, contacts, products, returns, selectedFY, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
@@ -376,9 +377,7 @@ export const SalesScreen: React.FC = () => {
         // Generate invoice number for new sales
         let invoiceNumber: string | undefined;
         if (!editingSale) {
-            const prefix = settings.invoicePrefix || 'INV';
-            const nextNum = (settings.lastInvoiceNumber || 0) + 1;
-            invoiceNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
+            invoiceNumber = getNextSequenceNumber(sales, settings.invoicePrefix || 'INV', 'invoiceNumber', selectedFY, selectedCompanyId);
         }
 
         const saleData = {
@@ -411,8 +410,6 @@ export const SalesScreen: React.FC = () => {
                 date: today,
                 ...saleData,
             });
-            // Increment invoice number counter
-            await updateSettings({ lastInvoiceNumber: (settings.lastInvoiceNumber || 0) + 1 });
         }
 
         if (expressMode && !editingSale) {
@@ -471,10 +468,19 @@ export const SalesScreen: React.FC = () => {
         navigation.navigate('InvoicePreview', { sale });
     };
 
+    const fyFilteredSales = useMemo(() => {
+        return sales.filter(s => getFinancialYear(s.date) === selectedFY && (s.companyId || 'default') === selectedCompanyId);
+    }, [sales, selectedFY, selectedCompanyId]);
+
     // Filter sales based on selected filter and date
-    const filteredSales = filterByDateRange(sales, dateFilter, selectedDate)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const totalFiltered = filteredSales.reduce((sum, s) => sum + (getSaleAmount(s).paid), 0);
+    const filteredSales = useMemo(() => {
+        return filterByDateRange(fyFilteredSales, dateFilter, selectedDate)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [fyFilteredSales, dateFilter, selectedDate]);
+
+    const totalFiltered = useMemo(() => {
+        return filteredSales.reduce((sum, s) => sum + (getSaleAmount(s).paid), 0);
+    }, [filteredSales]);
 
     const renderSaleItem = ({ item }: { item: Sale }) => {
         const { total, paid } = getSaleAmount(item);

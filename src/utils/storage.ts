@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
     PURCHASES: '@mathnote_purchases',
     USERS: '@mathnote_users',
     AUTH: '@mathnote_auth',
+    COMPANIES: '@mathnote_companies',
 };
 
 export const storage = {
@@ -140,9 +141,18 @@ export const storage = {
         return this.set(STORAGE_KEYS.PURCHASES, purchases);
     },
 
+    // Companies
+    async getCompanies(): Promise<Company[]> {
+        return (await this.get<Company[]>(STORAGE_KEYS.COMPANIES)) || [];
+    },
+
+    async setCompanies(companies: Company[]) {
+        return this.set(STORAGE_KEYS.COMPANIES, companies);
+    },
+
     // Backup
     async exportAllData() {
-        const [sales, expenses, credits, settings, contacts, products, returns, purchases] = await Promise.all([
+        const [sales, expenses, credits, settings, contacts, products, returns, purchases, companies] = await Promise.all([
             this.getSales(),
             this.getExpenses(),
             this.getCredits(),
@@ -151,12 +161,13 @@ export const storage = {
             this.getProducts(),
             this.getReturns(),
             this.getPurchases(),
+            this.getCompanies(),
         ]);
-        return { sales, expenses, credits, settings, contacts, products, returns, purchases, exportedAt: new Date().toISOString() };
+        return { sales, expenses, credits, settings, contacts, products, returns, purchases, companies, exportedAt: new Date().toISOString() };
     },
 
     // Restore from backup
-    async importAllData(data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings; contacts?: Contact[]; products?: Product[]; returns?: SaleReturn[]; purchases?: Purchase[] }) {
+    async importAllData(data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings; contacts?: Contact[]; products?: Product[]; returns?: SaleReturn[]; purchases?: Purchase[]; companies?: Company[] }) {
         try {
             const operations: Promise<boolean>[] = [];
 
@@ -183,6 +194,9 @@ export const storage = {
             }
             if (data.purchases && Array.isArray(data.purchases)) {
                 operations.push(this.setPurchases(data.purchases));
+            }
+            if (data.companies && Array.isArray(data.companies)) {
+                operations.push(this.setCompanies(data.companies));
             }
 
             await Promise.all(operations);
@@ -227,6 +241,7 @@ export interface SaleItem {
 
 export interface Sale {
     id: string;
+    companyId?: string;
     date: string;
     customerName: string;           // Customer name for the sale
     customerState?: string;
@@ -255,6 +270,7 @@ export interface Sale {
 
 export interface Expense {
     id: string;
+    companyId?: string;
     date: string;
     category: string;
     amount: number;
@@ -274,6 +290,7 @@ export interface CreditPayment {
 
 export interface Credit {
     id: string;
+    companyId?: string;
     party: string;
     type: 'given' | 'taken';
     amount: number;         // Total original amount
@@ -289,6 +306,7 @@ export type UserRole = 'owner' | 'manager' | 'staff';
 
 export interface User {
     id: string;
+    companyId?: string;
     name: string;
     username?: string;
     password?: string;
@@ -325,10 +343,21 @@ export interface Settings {
     users?: User[];
     currentUserId?: string;
     remindersEnabled?: boolean;
+    autoBackupEnabled?: boolean;
+}
+
+export interface Company {
+    id: string;
+    name: string;
+    address?: string;
+    phone?: string;
+    gstin?: string;
+    createdAt: string;
 }
 
 export interface Contact {
     id: string;
+    companyId?: string;
     name: string;
     phone?: string;
     type: 'Customer' | 'Vendor' | 'Both';
@@ -341,6 +370,7 @@ export interface Contact {
 
 export interface Product {
     id: string;
+    companyId?: string;
     name: string;
     brand?: string;
     stock: number;
@@ -354,6 +384,7 @@ export interface Product {
 
 export interface SaleReturn {
     id: string;
+    companyId?: string;
     saleId: string;
     date: string;
     party: string;
@@ -364,6 +395,7 @@ export interface SaleReturn {
 
 export interface Purchase {
     id: string;
+    companyId?: string;
     date: string;
     vendorName: string;
     totalAmount: number;

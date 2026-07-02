@@ -21,6 +21,7 @@ import type { DateFilterType } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp, useAuth } from '../context';
 import { Expense, Contact } from '../utils/storage';
+import { getFinancialYear } from '../utils/fyHelpers';
 
 // Business Categories
 const BUSINESS_CATEGORIES = [
@@ -46,10 +47,12 @@ const PERSONAL_CATEGORIES = [
 const ALL_CATEGORIES = [...BUSINESS_CATEGORIES, ...PERSONAL_CATEGORIES];
 
 export const ExpensesScreen: React.FC = () => {
-    const { expenses, addExpense, updateExpense, deleteExpense, settings, contacts } = useApp();
+    const { expenses, addExpense, updateExpense, deleteExpense, settings, contacts, selectedFY, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
+
+    const companyContacts = useMemo(() => contacts.filter(c => (c.companyId || 'default') === selectedCompanyId), [contacts, selectedCompanyId]);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
     const [amount, setAmount] = useState('');
@@ -150,11 +153,19 @@ export const ExpensesScreen: React.FC = () => {
         setDatePickerVisible(false);
     };
 
-    // Filter expenses based on selected filter and date
-    const filteredExpenses = filterByDateRange(expenses, dateFilter, selectedDate)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const fyFilteredExpenses = useMemo(() => {
+        return expenses.filter(e => getFinancialYear(e.date) === selectedFY && (e.companyId || 'default') === selectedCompanyId);
+    }, [expenses, selectedFY, selectedCompanyId]);
 
-    const totalFiltered = filteredExpenses.reduce((sum, e) => sum + (parseFloat(e.amount as any) || 0), 0);
+    // Filter expenses based on selected filter and date
+    const filteredExpenses = useMemo(() => {
+        return filterByDateRange(fyFilteredExpenses, dateFilter, selectedDate)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [fyFilteredExpenses, dateFilter, selectedDate]);
+
+    const totalFiltered = useMemo(() => {
+        return filteredExpenses.reduce((sum, e) => sum + (parseFloat(e.amount as any) || 0), 0);
+    }, [filteredExpenses]);
 
     const getCategoryInfo = (catId: string) => {
         return ALL_CATEGORIES.find((c) => c.id === catId) || ALL_CATEGORIES[ALL_CATEGORIES.length - 1];
@@ -345,7 +356,7 @@ export const ExpensesScreen: React.FC = () => {
 
                                 <Text style={styles.categoryGroupLabel}>🤝 Vendor/Contact</Text>
                                 <ContactPicker
-                                    contacts={contacts}
+                                    contacts={companyContacts}
                                     colors={colors}
                                     filterType="Vendor"
                                     onSelect={(contact: Contact) => {

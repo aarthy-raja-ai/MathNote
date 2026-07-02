@@ -13,13 +13,20 @@ import { Card } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp, useAuth } from '../context';
 import { SaleReturn } from '../utils/storage';
+import { getFinancialYear } from '../utils/fyHelpers';
 
 export const ReturnsScreen: React.FC = () => {
-    const { returns, deleteReturn, settings } = useApp();
+    const { returns, deleteReturn, settings, selectedFY, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
     const currency = settings.currency;
     const styles = useMemo(() => createStyles(colors), [colors]);
+
+    const filteredReturns = useMemo(() => {
+        return returns
+            .filter(r => getFinancialYear(r.date) === selectedFY && (r.companyId || 'default') === selectedCompanyId)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [returns, selectedFY, selectedCompanyId]);
 
     const handleDelete = (id: string) => {
         Alert.alert('Delete Return Entry', 'This will remove the return record. It will NOT rollback the inventory or balance. Continue?', [
@@ -68,7 +75,7 @@ export const ReturnsScreen: React.FC = () => {
                 </View>
 
                 <FlatList
-                    data={[...returns].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())}
+                    data={filteredReturns}
                     keyExtractor={(item) => item.id}
                     renderItem={renderReturnItem}
                     showsVerticalScrollIndicator={false}

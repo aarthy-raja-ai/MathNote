@@ -14,4 +14,5 @@ export { BusinessProfileScreen } from './BusinessProfileScreen';
 export { InvoicePreviewScreen } from './InvoicePreviewScreen';
 export { LoginScreen } from './LoginScreen';
 export { RegisterScreen } from './RegisterScreen';
+export { CompanyManagerScreen } from './CompanyManagerScreen';
 

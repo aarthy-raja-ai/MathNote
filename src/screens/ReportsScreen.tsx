@@ -24,7 +24,7 @@ type DateRange = 'daily' | 'weekly' | 'monthly' | 'yearly';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ReportsScreen: React.FC = () => {
-    const { sales, expenses, credits, settings, products, purchases, returns } = useApp();
+    const { sales, expenses, credits, settings, products, purchases, returns, selectedCompanyId } = useApp();
     const { canViewReports } = useAuth();
     const { colors } = useTheme();
     const [range, setRange] = useState<DateRange>('weekly');
@@ -74,10 +74,11 @@ export const ReportsScreen: React.FC = () => {
         }
     };
 
-    const filterByRange = <T extends { date: string }>(items: T[]): T[] => {
+    const filterByRange = <T extends { date: string; companyId?: string }>(items: T[]): T[] => {
         const { start, end } = getDateRange();
-        if (!start) return items;
-        return items.filter((item) => item.date >= start && item.date <= end);
+        const companyFiltered = items.filter(item => (item.companyId || 'default') === selectedCompanyId);
+        if (!start) return companyFiltered;
+        return companyFiltered.filter((item) => item.date >= start && item.date <= end);
     };
 
     // Helper to safely get sale amount (handles legacy data)
@@ -129,7 +130,7 @@ export const ReportsScreen: React.FC = () => {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
-        const monthSales = sales.filter(s => s.date >= monthStart && s.date <= monthEnd);
+        const monthSales = sales.filter(s => (s.companyId || 'default') === selectedCompanyId && s.date >= monthStart && s.date <= monthEnd);
 
         let totalCGST = 0, totalSGST = 0, totalIGST = 0, totalTaxableValue = 0;
 
@@ -150,7 +151,7 @@ export const ReportsScreen: React.FC = () => {
             totalGST: totalCGST + totalSGST + totalIGST,
             salesCount: monthSales.length,
         };
-    }, [sales]);
+    }, [sales, selectedCompanyId]);
 
     // Customer-wise Sales
     const customerSales = useMemo(() => {
@@ -172,18 +173,23 @@ export const ReportsScreen: React.FC = () => {
 
     // Stock Movement Report
     const stockMovement = useMemo(() => {
-        return products.map(product => {
-            const productPurchases = purchases.reduce((sum, p) => {
+        const companyProducts = products.filter(p => (p.companyId || 'default') === selectedCompanyId);
+        const companySales = sales.filter(s => (s.companyId || 'default') === selectedCompanyId);
+        const companyPurchases = purchases.filter(p => (p.companyId || 'default') === selectedCompanyId);
+        const companyReturns = returns.filter(r => (r.companyId || 'default') === selectedCompanyId);
+
+        return companyProducts.map(product => {
+            const productPurchases = companyPurchases.reduce((sum, p) => {
                 const item = (p.items || []).find(i => i.productId === product.id);
                 return sum + (item?.quantity || 0);
             }, 0);
 
-            const productSales = sales.reduce((sum, s) => {
+            const productSales = companySales.reduce((sum, s) => {
                 const item = (s.items || []).find(i => i.productId === product.id);
                 return sum + (item?.quantity || 0);
             }, 0);
 
-            const productReturns = returns.reduce((sum, r) => {
+            const productReturns = companyReturns.reduce((sum, r) => {
                 const item = (r.items || []).find(i => i.productId === product.id);
                 return sum + (item?.quantity || 0);
             }, 0);
@@ -197,7 +203,7 @@ export const ReportsScreen: React.FC = () => {
                 stock: product.stock
             };
         }).sort((a, b) => b.sold - a.sold);
-    }, [products, sales, purchases, returns]);
+    }, [products, sales, purchases, returns, selectedCompanyId]);
 
     const expensesByCategory = filteredExpenses.reduce((acc, e) => {
         acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
@@ -301,9 +307,9 @@ export const ReportsScreen: React.FC = () => {
         setPdfDatePickerVisible(false);
         setIsExporting(true);
         try {
-            const pdfSales = sales.filter(s => s.date >= pdfStartDate && s.date <= pdfEndDate);
-            const pdfExpenses = expenses.filter(e => e.date >= pdfStartDate && e.date <= pdfEndDate);
-            const pdfCredits = credits.filter(c => c.date >= pdfStartDate && c.date <= pdfEndDate);
+            const pdfSales = sales.filter(s => (s.companyId || 'default') === selectedCompanyId && s.date >= pdfStartDate && s.date <= pdfEndDate);
+            const pdfExpenses = expenses.filter(e => (e.companyId || 'default') === selectedCompanyId && e.date >= pdfStartDate && e.date <= pdfEndDate);
+            const pdfCredits = credits.filter(c => (c.companyId || 'default') === selectedCompanyId && c.date >= pdfStartDate && c.date <= pdfEndDate);
             await pdfService.shareReport({
                 sales: pdfSales,
                 expenses: pdfExpenses,

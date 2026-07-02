@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell, Share2, Building2, Receipt, FileText, Printer, User as UserIcon, RefreshCw, Fingerprint, Cloud, Key } from 'lucide-react-native';
+import { Moon, Coins, Lock, CloudUpload, CloudDownload, AlertTriangle, Mail, ChevronRight, Bell, Share2, Building2, Receipt, FileText, Printer, User as UserIcon, RefreshCw, Fingerprint, Cloud, Key, Save } from 'lucide-react-native';
 import { Card, Button, Input } from '../components';
 import { tokens, useTheme } from '../theme';
 import { useApp, useAuth } from '../context';
@@ -591,20 +591,37 @@ export const SettingsScreen: React.FC = () => {
                     </Card>
 
                     {canManageSettings && (
-                        <Card style={styles.settingCard}>
-                            <TouchableOpacity style={styles.settingRow} onPress={() => navigation.navigate('UserManager')}>
-                                <View style={styles.settingInfo}>
-                                    <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
-                                        <AlertTriangle size={20} color={colors.brand.primary} strokeWidth={2} />
+                        <>
+                            <Card style={styles.settingCard}>
+                                <TouchableOpacity style={styles.settingRow} onPress={() => navigation.navigate('CompanyManager')}>
+                                    <View style={styles.settingInfo}>
+                                        <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
+                                            <Building2 size={20} color={colors.brand.primary} strokeWidth={2} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.settingLabel}>Manage Companies</Text>
+                                            <Text style={styles.settingDescription}>Add/edit business locations & info</Text>
+                                        </View>
                                     </View>
-                                    <View>
-                                        <Text style={styles.settingLabel}>Manage Users & Roles</Text>
-                                        <Text style={styles.settingDescription}>Add/edit staff and manager access</Text>
+                                    <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
+                                </TouchableOpacity>
+                            </Card>
+
+                            <Card style={styles.settingCard}>
+                                <TouchableOpacity style={styles.settingRow} onPress={() => navigation.navigate('UserManager')}>
+                                    <View style={styles.settingInfo}>
+                                        <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
+                                            <AlertTriangle size={20} color={colors.brand.primary} strokeWidth={2} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.settingLabel}>Manage Users & Roles</Text>
+                                            <Text style={styles.settingDescription}>Add/edit staff and manager access</Text>
+                                        </View>
                                     </View>
-                                </View>
-                                <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
-                            </TouchableOpacity>
-                        </Card>
+                                    <ChevronRight size={20} color={colors.text.muted} strokeWidth={2} />
+                                </TouchableOpacity>
+                            </Card>
+                        </>
                     )}
 
                     <Card style={styles.settingCard}>
@@ -761,6 +778,26 @@ export const SettingsScreen: React.FC = () => {
                     {canManageSettings && (
                         <>
                             <Text style={styles.sectionTitle}>Local Data Management</Text>
+                            <Card style={styles.settingCard}>
+                                <View style={styles.settingRow}>
+                                    <View style={styles.settingInfo}>
+                                        <View style={styles.iconWrapper}>
+                                            <Save size={20} color={colors.text.primary} strokeWidth={2} />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.settingLabel}>Auto-Backup at 9:00 PM</Text>
+                                            <Text style={styles.settingDescription}>Automatically save backup to local storage daily</Text>
+                                        </View>
+                                    </View>
+                                    <Switch
+                                        value={Boolean(settings.autoBackupEnabled)}
+                                        onValueChange={(val) => updateSettings({ autoBackupEnabled: val })}
+                                        trackColor={{ false: colors.border.default, true: colors.brand.primary }}
+                                        thumbColor={colors.semantic.surface}
+                                    />
+                                </View>
+                            </Card>
+
                             <Card style={styles.settingCard}>
                                 <TouchableOpacity style={styles.settingRow} onPress={handleBackup}>
                                     <View style={styles.settingInfo}>

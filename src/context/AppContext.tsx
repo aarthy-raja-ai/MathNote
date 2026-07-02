@@ -1,8 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
-import storage, { Sale, Expense, Credit, Settings, CreditPayment, Contact, Product, SaleItem, SaleReturn, Purchase } from '../utils/storage';
+import storage, { Sale, Expense, Credit, Settings, CreditPayment, Contact, Product, SaleItem, SaleReturn, Purchase, Company } from '../utils/storage';
 import { syncService } from '../services/syncService';
 import { supabase } from '../services/supabaseClient';
+import { getFinancialYear, getAvailableFYs } from '../utils/fyHelpers';
+import * as FileSystem from 'expo-file-system/legacy';
+
 
 interface AppState {
     sales: Sale[];
@@ -13,6 +16,7 @@ interface AppState {
     products: Product[];
     returns: SaleReturn[];
     purchases: Purchase[];
+    companies: Company[];
     isLoading: boolean;
 }
 
@@ -89,7 +93,16 @@ interface AppContextType extends AppState {
         products?: Product[];
         returns?: SaleReturn[];
         purchases?: Purchase[];
+        companies?: Company[];
     }) => Promise<boolean>;
+    selectedFY: string;
+    setSelectedFY: (fy: string) => void;
+    availableFYs: string[];
+    selectedCompanyId: string;
+    setSelectedCompanyId: (id: string) => void;
+    addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => Promise<void>;
+    updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
+    deleteCompany: (id: string) => Promise<void>;
     // Computed
     getTodaySales: () => number;
     getTodayCashReceived: () => number;
@@ -130,6 +143,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         products: [],
         returns: [],
         purchases: [],
+        companies: [],
         isLoading: true,
     });
 
@@ -138,6 +152,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     stateRef.current = state;
 
     const [syncTrigger, setSyncTrigger] = useState(0);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>('default');
+    const [selectedFY, setSelectedFY] = useState<string>(getFinancialYear());
+    const availableFYs = useMemo(() => {
+        return getAvailableFYs(state.sales, state.purchases, state.expenses);
+    }, [state.sales, state.purchases, state.expenses]);
 
     // Load data on mount
     useEffect(() => {
@@ -153,7 +172,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
 
         const loadData = async () => {
-            const [sales, expenses, credits, settings, contacts, products, returns, purchases] = await Promise.all([
+            const [sales, expenses, credits, settings, contacts, products, returns, purchases, companies] = await Promise.all([
                 storage.getSales(),
                 storage.getExpenses(),
                 storage.getCredits(),
@@ -162,6 +181,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 storage.getProducts(),
                 storage.getReturns(),
                 storage.getPurchases(),
+                storage.getCompanies(),
             ]);
             const safeSettings = settings ? {
                 ...settings,
@@ -177,9 +197,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 products: products || [],
                 returns: returns || [],
                 purchases: purchases || [],
+                companies: companies || [],
                 isLoading: false,
             };
             setState(localData);
+
+            if (companies && companies.length > 0) {
+                setSelectedCompanyId(companies[0].id);
+            }
 
             // Cloud Sync Pull
             try {
@@ -191,14 +216,102 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loadData();
     }, []);
 
-// Set up real-time subscription
+    // Set up Mobile auto-backup at 9:00 PM daily
+    useEffect(() => {
+        const runAutoBackup = async () => {
+            try {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const lastBackupDate = await storage.get<string>('@last_auto_backup_date');
+                if (lastBackupDate === todayStr) {
+                    return; // Already backed up today
+                }
+
+                console.log('[AutoBackup] Running daily 9pm auto-backup...');
+                const data = await storage.exportAllData();
+                const jsonStr = JSON.stringify(data);
+
+                // Base64 encode helper
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                const base64Encode = (str: string): string => {
+                    let result = '';
+                    for (let i = 0; i < str.length; i += 3) {
+                        const c1 = str.charCodeAt(i);
+                        const c2 = i + 1 < str.length ? str.charCodeAt(i + 1) : NaN;
+                        const c3 = i + 2 < str.length ? str.charCodeAt(i + 2) : NaN;
+
+                        const byte1 = c1 >> 2;
+                        const byte2 = ((c1 & 3) << 4) | (isNaN(c2) ? 0 : c2 >> 4);
+                        const byte3 = isNaN(c2) ? 64 : (((c2 & 15) << 2) | (isNaN(c3) ? 0 : c3 >> 6));
+                        const byte4 = isNaN(c3) ? 64 : c3 & 63;
+
+                        result += chars.charAt(byte1) + chars.charAt(byte2) + 
+                                  (byte3 === 64 ? '=' : chars.charAt(byte3)) + 
+                                  (byte4 === 64 ? '=' : chars.charAt(byte4));
+                    }
+                    return result;
+                };
+                const encodedData = base64Encode(unescape(encodeURIComponent(jsonStr)));
+
+                // Write file to Document Directory / autobackups/
+                const dir = FileSystem.documentDirectory + 'autobackups/';
+                const dirInfo = await FileSystem.getInfoAsync(dir);
+                if (!dirInfo.exists) {
+                    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+                }
+
+                const fileName = `mathnote_autobackup_${todayStr}.mathnote`;
+                const filePath = dir + fileName;
+                await FileSystem.writeAsStringAsync(filePath, encodedData);
+
+                // Save last backup date
+                await storage.set('@last_auto_backup_date', todayStr);
+
+                // Keep only last 7 backups
+                const files = await FileSystem.readDirectoryAsync(dir);
+                if (files.length > 7) {
+                    const sorted = files.filter(f => f.startsWith('mathnote_autobackup_')).sort();
+                    while (sorted.length > 7) {
+                        const oldFile = sorted.shift();
+                        if (oldFile) {
+                            await FileSystem.deleteAsync(dir + oldFile, { idempotent: true });
+                        }
+                    }
+                }
+                console.log('[AutoBackup] Daily auto-backup completed successfully!');
+            } catch (err) {
+                console.error('[AutoBackup] Auto backup failed:', err);
+            }
+        };
+
+        const checkTimeAndBackup = () => {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentSettings = stateRef.current.settings;
+            if (currentSettings && currentSettings.autoBackupEnabled) {
+                if (currentHour >= 21) { // 9:00 PM or later
+                    runAutoBackup();
+                }
+            }
+        };
+
+        if (!state.isLoading) {
+            checkTimeAndBackup();
+        }
+
+        const interval = setInterval(checkTimeAndBackup, 60000); // Check every minute
+        return () => {
+            clearInterval(interval);
+        };
+    }, [state.isLoading, state.settings.autoBackupEnabled]);
+
+    // Set up real-time subscription
 useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     const setupSync = async () => {
         unsubscribe = await syncService.subscribe(async () => {
             console.log('[Sync] Cloud update received, refreshing state...');
-            const [sales, expenses, credits, settings, contacts, products, returns, purchases] = await Promise.all([
+            const [sales, expenses, credits, settings, contacts, products, returns, purchases, companies] = await Promise.all([
                 storage.getSales(),
                 storage.getExpenses(),
                 storage.getCredits(),
@@ -207,10 +320,11 @@ useEffect(() => {
                 storage.getProducts(),
                 storage.getReturns(),
                 storage.getPurchases(),
+                storage.getCompanies(),
             ]);
             setState(prev => ({
                 ...prev,
-                sales, expenses, credits, settings: settings || prev.settings, contacts, products, returns, purchases
+                sales, expenses, credits, settings: settings || prev.settings, contacts, products, returns, purchases, companies
             }));
         });
     };
@@ -236,6 +350,7 @@ const addSale = useCallback(async (saleInput: AddSaleInput) => {
 
         const newCredit: Credit = {
             id: creditId,
+            companyId: selectedCompanyId,
             party: saleInput.customerName,
             type: 'given', // Customer owes us money
             amount: remainingAmount,
@@ -251,6 +366,7 @@ const addSale = useCallback(async (saleInput: AddSaleInput) => {
 
     const newSale: Sale = {
         id: saleId,
+        companyId: selectedCompanyId,
         date: saleInput.date,
         customerName: saleInput.customerName,
         customerState: saleInput.customerState,
@@ -297,7 +413,7 @@ const addSale = useCallback(async (saleInput: AddSaleInput) => {
         credits: newCredits,
         products: updatedProducts
     }));
-}, []);
+}, [selectedCompanyId]);
 
 const updateSale = useCallback(async (id: string, updates: Partial<Sale>) => {
     const newSales = stateRef.current.sales.map((s) => (s.id === id ? { ...s, ...updates } : s));
@@ -327,12 +443,13 @@ const addExpense = useCallback(async (expense: Omit<Expense, 'id'>) => {
     const newExpense: Expense = {
         ...expense,
         id: generateId(),
+        companyId: selectedCompanyId,
         paymentMethod: expense.paymentMethod || 'Cash' // Default to Cash if not provided
     };
     const newExpenses = [...stateRef.current.expenses, newExpense];
     await storage.setExpenses(newExpenses);
     setState((prev) => ({ ...prev, expenses: newExpenses }));
-}, []);
+}, [selectedCompanyId]);
 
 const updateExpense = useCallback(async (id: string, updates: Partial<Expense>) => {
     const newExpenses = stateRef.current.expenses.map((e) => (e.id === id ? { ...e, ...updates } : e));
@@ -352,13 +469,14 @@ const addCredit = useCallback(async (credit: Omit<Credit, 'id' | 'paidAmount' | 
     const newCredit: Credit = {
         ...credit,
         id: generateId(),
+        companyId: selectedCompanyId,
         paidAmount: 0,
         payments: [],
     };
     const newCredits = [...stateRef.current.credits, newCredit];
     await storage.setCredits(newCredits);
     setState((prev) => ({ ...prev, credits: newCredits }));
-}, []);
+}, [selectedCompanyId]);
 
 const updateCredit = useCallback(async (id: string, updates: Partial<Credit>) => {
     const newCredits = stateRef.current.credits.map((c) => {
@@ -405,12 +523,13 @@ const addContact = useCallback(async (contactInput: Omit<Contact, 'id' | 'create
     const newContact: Contact = {
         ...contactInput,
         id: generateId(),
+        companyId: selectedCompanyId,
         createdAt: new Date().toISOString(),
     };
     const newContacts = [...stateRef.current.contacts, newContact];
     await storage.setContacts(newContacts);
     setState((prev) => ({ ...prev, contacts: newContacts }));
-}, []);
+}, [selectedCompanyId]);
 
 const updateContact = useCallback(async (id: string, updates: Partial<Contact>) => {
     const newContacts = stateRef.current.contacts.map((c) => (c.id === id ? { ...c, ...updates } : c));
@@ -447,12 +566,13 @@ const addProduct = useCallback(async (productInput: Omit<Product, 'id' | 'create
     const newProduct: Product = {
         ...productInput,
         id: generateId(),
+        companyId: selectedCompanyId,
         createdAt: new Date().toISOString(),
     };
     const newProducts = [...stateRef.current.products, newProduct];
     await storage.setProducts(newProducts);
     setState((prev) => ({ ...prev, products: newProducts }));
-}, []);
+}, [selectedCompanyId]);
 
 const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
     const newProducts = stateRef.current.products.map((p) => (p.id === id ? { ...p, ...updates } : p));
@@ -490,6 +610,7 @@ const addReturn = useCallback(async (input: AddReturnInput) => {
     const returnId = generateId();
     const newReturn: SaleReturn = {
         id: returnId,
+        companyId: selectedCompanyId,
         saleId: input.saleId,
         date: input.date,
         party: sale.customerName || 'Walk-in',
@@ -535,7 +656,7 @@ const addReturn = useCallback(async (input: AddReturnInput) => {
     }));
 
     Alert.alert('Success', 'Sales return processed and stock updated.');
-}, []);
+}, [selectedCompanyId]);
 
 const deleteReturn = useCallback(async (id: string) => {
     const ret = stateRef.current.returns.find(r => r.id === id);
@@ -576,6 +697,7 @@ const addPurchase = useCallback(async (purchaseInput: Omit<Purchase, 'id'>) => {
         linkedExpenseId = generateId();
         const newExpense: Expense = {
             id: linkedExpenseId,
+            companyId: selectedCompanyId,
             date: purchaseInput.date,
             category: 'Purchase',
             amount: purchaseInput.paidAmount,
@@ -590,6 +712,7 @@ const addPurchase = useCallback(async (purchaseInput: Omit<Purchase, 'id'>) => {
     const newPurchase: Purchase = {
         ...purchaseInput,
         id,
+        companyId: selectedCompanyId,
         linkedExpenseId
     };
 
@@ -615,7 +738,7 @@ const addPurchase = useCallback(async (purchaseInput: Omit<Purchase, 'id'>) => {
         products: updatedProducts,
         expenses: newExpenses
     }));
-}, []);
+}, [selectedCompanyId]);
 
 const updatePurchase = useCallback(async (id: string, updates: Partial<Purchase>) => {
     const oldPurchase = stateRef.current.purchases.find(p => p.id === id);
@@ -735,6 +858,37 @@ const deletePurchase = useCallback(async (id: string) => {
     await syncService.delete('@mathnote_purchases', id).catch(err => console.error('[Sync] Purchase delete failed:', err));
 }, []);
 
+// Companies
+const addCompany = useCallback(async (companyInput: Omit<Company, 'id' | 'createdAt'>) => {
+    const companyId = generateId();
+    const newCompany: Company = {
+        ...companyInput,
+        id: companyId,
+        createdAt: new Date().toISOString(),
+    };
+    const newCompanies = [...stateRef.current.companies, newCompany];
+    await storage.setCompanies(newCompanies);
+    setState((prev) => ({ ...prev, companies: newCompanies }));
+    if (stateRef.current.companies.length === 0) {
+        setSelectedCompanyId(companyId);
+    }
+}, []);
+
+const updateCompany = useCallback(async (id: string, updates: Partial<Company>) => {
+    const newCompanies = stateRef.current.companies.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    await storage.setCompanies(newCompanies);
+    setState((prev) => ({ ...prev, companies: newCompanies }));
+}, []);
+
+const deleteCompany = useCallback(async (id: string) => {
+    const newCompanies = stateRef.current.companies.filter((c) => c.id !== id);
+    await storage.setCompanies(newCompanies);
+    setState((prev) => ({ ...prev, companies: newCompanies }));
+    if (selectedCompanyId === id) {
+        setSelectedCompanyId(newCompanies.length > 0 ? newCompanies[0].id : 'default');
+    }
+}, [selectedCompanyId]);
+
 // Settings
 const updateSettings = useCallback(async (updates: Partial<Settings>) => {
     const newSettings = { ...stateRef.current.settings, ...updates };
@@ -789,6 +943,7 @@ const clearAllData = useCallback(async () => {
             products: [],
             returns: [],
             purchases: [],
+            companies: [],
             isLoading: false,
         });
     }
@@ -796,7 +951,7 @@ const clearAllData = useCallback(async () => {
 }, []);
 
 // Restore data from backup
-const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings; contacts?: Contact[]; products?: Product[]; returns?: SaleReturn[]; purchases?: Purchase[] }) => {
+const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expense[]; credits?: Credit[]; settings?: Settings; contacts?: Contact[]; products?: Product[]; returns?: SaleReturn[]; purchases?: Purchase[]; companies?: Company[] }) => {
     const success = await storage.importAllData(data);
     if (success) {
         setState({
@@ -808,6 +963,7 @@ const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expens
             products: data.products || [],
             returns: data.returns || [],
             purchases: data.purchases || [],
+            companies: data.companies || [],
             isLoading: false,
         });
     }
@@ -819,59 +975,59 @@ const restoreData = useCallback(async (data: { sales?: Sale[]; expenses?: Expens
 const getTodaySales = useCallback(() => {
     const today = getToday();
     return state.sales
-        .filter((s) => s.date === today)
+        .filter((s) => getFinancialYear(s.date) === selectedFY && s.date === today)
         .reduce((sum, s) => sum + (s.totalAmount ?? 0), 0);
-}, [state.sales]);
+}, [state.sales, selectedFY]);
 
 // Get today's cash received (paidAmount for Cash payment method)
 const getTodayCashReceived = useCallback(() => {
     const today = getToday();
     return state.sales
-        .filter((s) => s.date === today && s.paymentMethod === 'Cash')
+        .filter((s) => getFinancialYear(s.date) === selectedFY && s.date === today && s.paymentMethod === 'Cash')
         .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
-}, [state.sales]);
+}, [state.sales, selectedFY]);
 
 // Get today's UPI received (paidAmount for UPI payment method)
 const getTodayUPIReceived = useCallback(() => {
     const today = getToday();
     return state.sales
-        .filter((s) => s.date === today && s.paymentMethod === 'UPI')
+        .filter((s) => getFinancialYear(s.date) === selectedFY && s.date === today && s.paymentMethod === 'UPI')
         .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
-}, [state.sales]);
+}, [state.sales, selectedFY]);
 
 const getTodayExpenses = useCallback(() => {
     const today = getToday();
     return state.expenses
-        .filter((e) => e.date === today)
+        .filter((e) => getFinancialYear(e.date) === selectedFY && e.date === today)
         .reduce((sum, e) => sum + (e.amount ?? 0), 0);
-}, [state.expenses]);
+}, [state.expenses, selectedFY]);
 
 const getTodayPurchases = useCallback(() => {
     const today = getToday();
     return state.purchases
-        .filter((p) => p.date === today)
+        .filter((p) => getFinancialYear(p.date) === selectedFY && p.date === today)
         .reduce((sum, p) => sum + (p.paidAmount ?? p.totalAmount ?? 0), 0);
-}, [state.purchases]);
+}, [state.purchases, selectedFY]);
 
 
 const getTodayProfit = useCallback(() => {
     const today = getToday();
     return state.sales
-        .filter(s => s.date === today)
+        .filter(s => getFinancialYear(s.date) === selectedFY && s.date === today)
         .reduce((totalProfit, sale) => {
             const subtotal = sale.subtotal || sale.totalAmount || 0;
             const discount = sale.discountTotal || 0;
             const cost = (sale.items || []).reduce((sum, item) => sum + ((item.costPrice || 0) * item.quantity), 0);
             return totalProfit + (subtotal - discount - cost);
         }, 0);
-}, [state.sales]);
+}, [state.sales, selectedFY]);
 
 const getProfitForRange = useCallback((days?: number) => {
-    let filteredSales = state.sales;
+    let filteredSales = state.sales.filter(s => getFinancialYear(s.date) === selectedFY);
     if (days) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
-        filteredSales = state.sales.filter(s => new Date(s.date) >= cutoff);
+        filteredSales = filteredSales.filter(s => new Date(s.date) >= cutoff);
     }
 
     return filteredSales.reduce((totalProfit, sale) => {
@@ -880,59 +1036,59 @@ const getProfitForRange = useCallback((days?: number) => {
         const cost = (sale.items || []).reduce((sum, item) => sum + ((item.costPrice || 0) * item.quantity), 0);
         return totalProfit + (subtotal - discount - cost);
     }, 0);
-}, [state.sales]);
+}, [state.sales, selectedFY]);
 
 // Get total payments received for 'given' credits (money coming in from credits we gave)
 const getCreditPaymentsReceived = useCallback(() => {
     return state.credits
-        .filter((c) => c.type === 'given')
+        .filter((c) => getFinancialYear(c.date) === selectedFY && c.type === 'given')
         .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
-}, [state.credits]);
+}, [state.credits, selectedFY]);
 
 // Get total payments made for 'taken' credits (money going out for credits we took)
 const getCreditPaymentsMade = useCallback(() => {
     return state.credits
-        .filter((c) => c.type === 'taken')
+        .filter((c) => getFinancialYear(c.date) === selectedFY && c.type === 'taken')
         .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
-}, [state.credits]);
+}, [state.credits, selectedFY]);
 
 const getBalance = useCallback(() => {
-    const totalSales = state.sales.reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
-    const totalExpenses = state.expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    const totalSales = state.sales.filter(s => getFinancialYear(s.date) === selectedFY).reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
+    const totalExpenses = state.expenses.filter(e => getFinancialYear(e.date) === selectedFY).reduce((sum, e) => sum + (e.amount ?? 0), 0);
 
     // Credit received (from given credits)
     const creditReceived = state.credits
-        .filter((c) => c.type === 'given')
+        .filter((c) => getFinancialYear(c.date) === selectedFY && c.type === 'given')
         .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
 
     // Credit payments made (for taken credits) subtract from balance
     const creditPaid = state.credits
-        .filter((c) => c.type === 'taken')
+        .filter((c) => getFinancialYear(c.date) === selectedFY && c.type === 'taken')
         .reduce((sum, c) => sum + (c.paidAmount ?? 0), 0);
 
     // Sales returns subtract from balance
-    const totalReturns = state.returns.reduce((sum, r) => sum + (r.amount ?? 0), 0);
+    const totalReturns = state.returns.filter(r => getFinancialYear(r.date) === selectedFY).reduce((sum, r) => sum + (r.amount ?? 0), 0);
 
     // Purchases subtract from balance
-    const totalPurchases = state.purchases.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
+    const totalPurchases = state.purchases.filter(p => getFinancialYear(p.date) === selectedFY).reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
 
     return totalSales + creditReceived - totalExpenses - creditPaid - totalReturns - totalPurchases;
-}, [state.sales, state.expenses, state.credits, state.returns, state.purchases]);
+}, [state.sales, state.expenses, state.credits, state.returns, state.purchases, selectedFY]);
 
 const getCashBalance = useCallback(() => {
     // Sales (Cash)
     const salesCash = state.sales
-        .filter(s => s.paymentMethod === 'Cash')
+        .filter(s => getFinancialYear(s.date) === selectedFY && s.paymentMethod === 'Cash')
         .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
 
     // Expenses (Cash) - if paymentMethod is undefined/null, assume Cash for now
     const expensesCash = state.expenses
-        .filter(e => e.paymentMethod === 'Cash' || !e.paymentMethod)
+        .filter(e => getFinancialYear(e.date) === selectedFY && (e.paymentMethod === 'Cash' || !e.paymentMethod))
         .reduce((sum, e) => sum + (e.amount ?? 0), 0);
 
     // Credit Received (Cash)
     const creditReceivedCash = state.credits
-        .filter(c => c.type === 'given')
+        .filter(c => getFinancialYear(c.date) === selectedFY && c.type === 'given')
         .reduce((sum, c) => {
             const cashPayments = c.payments?.filter(p => p.paymentMode === 'Cash') || [];
             return sum + cashPayments.reduce((pSum, p) => pSum + p.amount, 0);
@@ -940,7 +1096,7 @@ const getCashBalance = useCallback(() => {
 
     // Credit Paid (Cash)
     const creditPaidCash = state.credits
-        .filter(c => c.type === 'taken')
+        .filter(c => getFinancialYear(c.date) === selectedFY && c.type === 'taken')
         .reduce((sum, c) => {
             const cashPayments = c.payments?.filter(p => p.paymentMode === 'Cash') || [];
             return sum + cashPayments.reduce((pSum, p) => pSum + p.amount, 0);
@@ -948,7 +1104,7 @@ const getCashBalance = useCallback(() => {
 
     // Returns (Cash) - difficult to track exactly without return payment method, assuming Cash for safety/default
     // logic: if original sale was cash, return is cash.
-    const returnsCash = state.returns.reduce((sum, r) => {
+    const returnsCash = state.returns.filter(r => getFinancialYear(r.date) === selectedFY).reduce((sum, r) => {
         const originalSale = state.sales.find(s => s.id === r.saleId);
         if (originalSale && originalSale.paymentMethod === 'Cash') {
             return sum + (r.amount ?? 0);
@@ -958,26 +1114,26 @@ const getCashBalance = useCallback(() => {
 
     // Purchases (Cash)
     const purchasesCash = state.purchases
-        .filter(p => p.paymentMethod === 'Cash')
+        .filter(p => getFinancialYear(p.date) === selectedFY && p.paymentMethod === 'Cash')
         .reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
 
     return salesCash + creditReceivedCash - expensesCash - creditPaidCash - returnsCash - purchasesCash;
-}, [state.sales, state.expenses, state.credits, state.returns, state.purchases]);
+}, [state.sales, state.expenses, state.credits, state.returns, state.purchases, selectedFY]);
 
 const getUPIBalance = useCallback(() => {
     // Sales (UPI)
     const salesUPI = state.sales
-        .filter(s => s.paymentMethod === 'UPI')
+        .filter(s => getFinancialYear(s.date) === selectedFY && s.paymentMethod === 'UPI')
         .reduce((sum, s) => sum + (s.paidAmount ?? s.totalAmount ?? 0), 0);
 
     // Expenses (UPI)
     const expensesUPI = state.expenses
-        .filter(e => e.paymentMethod === 'UPI')
+        .filter(e => getFinancialYear(e.date) === selectedFY && e.paymentMethod === 'UPI')
         .reduce((sum, e) => sum + (e.amount ?? 0), 0);
 
     // Credit Received (UPI)
     const creditReceivedUPI = state.credits
-        .filter(c => c.type === 'given')
+        .filter(c => getFinancialYear(c.date) === selectedFY && c.type === 'given')
         .reduce((sum, c) => {
             const upiPayments = c.payments?.filter(p => p.paymentMode === 'UPI') || [];
             return sum + upiPayments.reduce((pSum, p) => pSum + p.amount, 0);
@@ -985,14 +1141,14 @@ const getUPIBalance = useCallback(() => {
 
     // Credit Paid (UPI)
     const creditPaidUPI = state.credits
-        .filter(c => c.type === 'taken')
+        .filter(c => getFinancialYear(c.date) === selectedFY && c.type === 'taken')
         .reduce((sum, c) => {
             const upiPayments = c.payments?.filter(p => p.paymentMode === 'UPI') || [];
             return sum + upiPayments.reduce((pSum, p) => pSum + p.amount, 0);
         }, 0);
 
     // Returns (UPI)
-    const returnsUPI = state.returns.reduce((sum, r) => {
+    const returnsUPI = state.returns.filter(r => getFinancialYear(r.date) === selectedFY).reduce((sum, r) => {
         const originalSale = state.sales.find(s => s.id === r.saleId);
         if (originalSale && originalSale.paymentMethod === 'UPI') {
             return sum + (r.amount ?? 0);
@@ -1002,11 +1158,11 @@ const getUPIBalance = useCallback(() => {
 
     // Purchases (UPI)
     const purchasesUPI = state.purchases
-        .filter(p => p.paymentMethod === 'UPI')
+        .filter(p => getFinancialYear(p.date) === selectedFY && p.paymentMethod === 'UPI')
         .reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
 
     return salesUPI + creditReceivedUPI - expensesUPI - creditPaidUPI - returnsUPI - purchasesUPI;
-}, [state.sales, state.expenses, state.credits, state.returns, state.purchases]);
+}, [state.sales, state.expenses, state.credits, state.returns, state.purchases, selectedFY]);
 
 return (
     <AppContext.Provider
@@ -1048,6 +1204,14 @@ return (
             deletePurchase,
             getCashBalance,
             getUPIBalance,
+            selectedFY,
+            setSelectedFY,
+            availableFYs,
+            selectedCompanyId,
+            setSelectedCompanyId,
+            addCompany,
+            updateCompany,
+            deleteCompany,
         }}
     >
         {children}

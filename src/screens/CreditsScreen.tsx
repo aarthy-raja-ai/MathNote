@@ -22,9 +22,10 @@ import { tokens, useTheme } from '../theme';
 import { useApp, useAuth } from '../context';
 import { Credit, CreditPayment } from '../utils/storage';
 import { generateCreditReport } from '../utils/invoiceGenerator';
+import { getFinancialYear } from '../utils/fyHelpers';
 
 export const CreditsScreen: React.FC = () => {
-    const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment, contacts } = useApp();
+    const { credits, addCredit, updateCredit, deleteCredit, settings, sales, addCreditPayment, contacts, selectedFY, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
@@ -37,6 +38,8 @@ export const CreditsScreen: React.FC = () => {
     const [party, setParty] = useState('');
     const [type, setType] = useState<'given' | 'taken'>('given');
     const [searchQuery, setSearchQuery] = useState('');
+
+    const companyContacts = useMemo(() => contacts.filter(c => (c.companyId || 'default') === selectedCompanyId), [contacts, selectedCompanyId]);
     const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const [paymentPaymentMode, setPaymentPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
     const [ledgerVisible, setLedgerVisible] = useState(false);
@@ -165,12 +168,14 @@ export const CreditsScreen: React.FC = () => {
     const filteredCredits = useMemo(() => {
         return credits
             .filter(c => {
+                const matchesFY = getFinancialYear(c.date) === selectedFY;
+                const matchesCompany = (c.companyId || 'default') === selectedCompanyId;
                 const matchesSearch = c.party.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     (c.amount ?? '').toString().includes(searchQuery);
-                return matchesSearch;
+                return matchesFY && matchesCompany && matchesSearch;
             })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [credits, searchQuery]);
+    }, [credits, searchQuery, selectedFY, selectedCompanyId]);
 
     // Calculate pending amounts from grouped credits net balances
     // Note: pendingGiven and pendingTaken are moved after groupedCredits definition
@@ -555,7 +560,7 @@ export const CreditsScreen: React.FC = () => {
 
                             <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Select {type === 'given' ? 'Customer' : 'Vendor'}</Text>
                             <ContactPicker
-                                contacts={contacts}
+                                contacts={companyContacts}
                                 colors={colors}
                                 filterType={type === 'given' ? 'Customer' : 'Vendor'}
                                 onSelect={(contact) => setParty(contact.name)}

@@ -25,6 +25,7 @@ import { tokens, useTheme } from '../theme';
 import { useApp, useAuth } from '../context';
 import { Purchase, Product, SaleItem } from '../utils/storage';
 import { evaluateMath } from '../utils/mathEvaluator';
+import { getFinancialYear } from '../utils/fyHelpers';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.70;
@@ -68,12 +69,15 @@ const segmentStyles = StyleSheet.create({
 
 export const PurchasesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
-    const { purchases, addPurchase, updatePurchase, deletePurchase, settings, contacts, products } = useApp();
+    const { purchases, addPurchase, updatePurchase, deletePurchase, settings, contacts, products, selectedFY, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
     const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
+
+    const companyContacts = useMemo(() => contacts.filter(c => (c.companyId || 'default') === selectedCompanyId), [contacts, selectedCompanyId]);
+    const companyProducts = useMemo(() => products.filter(p => (p.companyId || 'default') === selectedCompanyId), [products, selectedCompanyId]);
 
     // Form fields
     const [vendorName, setVendorName] = useState('');
@@ -334,9 +338,19 @@ export const PurchasesScreen: React.FC = () => {
         setDatePickerVisible(false);
     };
 
-    const filteredPurchases = filterByDateRange(purchases, dateFilter, selectedDate)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const totalFiltered = filteredPurchases.reduce((sum, p) => sum + (p.paidAmount || p.totalAmount), 0);
+    const fyFilteredPurchases = useMemo(() => {
+        return purchases.filter(p => getFinancialYear(p.date) === selectedFY && (p.companyId || 'default') === selectedCompanyId);
+    }, [purchases, selectedFY, selectedCompanyId]);
+
+    // Filter purchases based on selected filter and date
+    const filteredPurchases = useMemo(() => {
+        return filterByDateRange(fyFilteredPurchases, dateFilter, selectedDate)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [fyFilteredPurchases, dateFilter, selectedDate]);
+
+    const totalFiltered = useMemo(() => {
+        return filteredPurchases.reduce((sum, p) => sum + (p.paidAmount || p.totalAmount), 0);
+    }, [filteredPurchases]);
 
     const renderPurchaseItem = ({ item }: { item: Purchase }) => {
         const isToday = item.date === today;
@@ -465,7 +479,7 @@ export const PurchasesScreen: React.FC = () => {
 
                                 <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Select Vendor</Text>
                                 <ContactPicker
-                                    contacts={contacts}
+                                    contacts={companyContacts}
                                     colors={colors}
                                     filterType="Vendor"
                                     onSelect={(contact) => setVendorName(contact.name)}
@@ -480,7 +494,7 @@ export const PurchasesScreen: React.FC = () => {
 
                                 <Text style={[styles.sectionLabel, { color: colors.text.secondary }]}>Inventory Items</Text>
                                 <ProductPicker
-                                    products={products}
+                                    products={companyProducts}
                                     colors={colors}
                                     selectedProducts={selectedItems.map(i => i.productId)}
                                     onSelect={handleProductSelect}

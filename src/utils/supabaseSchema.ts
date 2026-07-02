@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS sales (
   "taxMode" TEXT,
   "returnIds" JSONB,
   "linkedCreditId" TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS products (
   unit TEXT,
   "lowStockThreshold" NUMERIC,
   "taxRate" NUMERIC,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   state TEXT,
   gstin TEXT,
   type TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -71,6 +74,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   "vendorName" TEXT,
   "vendorId" TEXT,
   "paymentMethod" TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -88,6 +92,7 @@ CREATE TABLE IF NOT EXISTS credits (
   "linkedSaleId" TEXT,
   "linkedPurchaseId" TEXT,
   payments JSONB,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -101,6 +106,7 @@ CREATE TABLE IF NOT EXISTS returns (
   note TEXT,
   items JSONB,
   "linkedCreditId" TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -121,6 +127,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   sgst NUMERIC,
   igst NUMERIC,
   "gstRate" NUMERIC,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -150,6 +157,7 @@ CREATE TABLE IF NOT EXISTS quotations (
   status TEXT,
   "convertedSaleId" TEXT,
   note TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -172,6 +180,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   status TEXT,
   "convertedPurchaseId" TEXT,
   note TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -183,6 +192,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   date DATE,
   status TEXT,
   note TEXT,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -194,6 +204,7 @@ CREATE TABLE IF NOT EXISTS users (
   password TEXT,
   pin TEXT,
   role TEXT NOT NULL,
+  company_id TEXT DEFAULT 'default',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -216,11 +227,34 @@ CREATE TABLE IF NOT EXISTS business_profile (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 13. Companies Table
+CREATE TABLE IF NOT EXISTS companies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  address TEXT,
+  phone TEXT,
+  gstin TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Alter existing tables to add company_id column if they don't already have it
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE credits ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE returns ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company_id TEXT DEFAULT 'default';
+
 -- ENABLE REALTIME REPLICATION FOR ALL TABLES (using safe DO block to prevent errors if already added)
 DO $$
 DECLARE
     tbl TEXT;
-    tbls TEXT[] := ARRAY['sales', 'products', 'contacts', 'expenses', 'credits', 'returns', 'purchases', 'quotations', 'purchase_orders', 'attendance', 'users', 'business_profile'];
+    tbls TEXT[] := ARRAY['sales', 'products', 'contacts', 'expenses', 'credits', 'returns', 'purchases', 'quotations', 'purchase_orders', 'attendance', 'users', 'business_profile', 'companies'];
 BEGIN
     FOREACH tbl IN ARRAY tbls LOOP
         IF NOT EXISTS (
@@ -235,7 +269,6 @@ BEGIN
 END
 $$;
 
-
 -- DISABLE ROW LEVEL SECURITY FOR ALL TABLES (Recommended for testing/simplicity)
 ALTER TABLE sales DISABLE ROW LEVEL SECURITY;
 ALTER TABLE products DISABLE ROW LEVEL SECURITY;
@@ -249,5 +282,5 @@ ALTER TABLE purchase_orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance DISABLE ROW LEVEL SECURITY;
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE business_profile DISABLE ROW LEVEL SECURITY;
+ALTER TABLE companies DISABLE ROW LEVEL SECURITY;
 `;
-

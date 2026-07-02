@@ -41,7 +41,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 export const InventoryScreen: React.FC = () => {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { products, addProduct, updateProduct, deleteProduct, settings } = useApp();
+    const { products, addProduct, updateProduct, deleteProduct, settings, selectedCompanyId } = useApp();
     const { canDelete, canViewReports } = useAuth();
     const { colors } = useTheme();
     const [search, setSearch] = useState('');
@@ -104,17 +104,18 @@ export const InventoryScreen: React.FC = () => {
 
     const filteredProducts = useMemo(() => {
         return products
-            .filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase()))
+            .filter(p => (p.companyId || 'default') === selectedCompanyId && (p.name.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase())))
             .sort((a, b) => a.name.localeCompare(b.name));
-    }, [products, search]);
+    }, [products, search, selectedCompanyId]);
 
     const stats = useMemo(() => {
-        const totalItems = products.length;
-        const lowStock = products.filter(p => p.stock <= (p.minStockLevel || 5)).length;
-        const totalValue = products.reduce((sum, p) => sum + (p.stock * p.unitPrice), 0);
-        const potentialProfit = products.reduce((sum, p) => sum + (p.stock * (p.unitPrice - (p.costPrice || 0))), 0);
+        const companyProducts = products.filter(p => (p.companyId || 'default') === selectedCompanyId);
+        const totalItems = companyProducts.length;
+        const lowStock = companyProducts.filter(p => p.stock <= (p.minStockLevel || 5)).length;
+        const totalValue = companyProducts.reduce((sum, p) => sum + (p.stock * p.unitPrice), 0);
+        const potentialProfit = companyProducts.reduce((sum, p) => sum + (p.stock * (p.unitPrice - (p.costPrice || 0))), 0);
         return { totalItems, lowStock, totalValue, potentialProfit };
-    }, [products]);
+    }, [products, selectedCompanyId]);
 
     const openModal = (product?: Product) => {
         if (product) {

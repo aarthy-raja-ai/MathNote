@@ -7,6 +7,7 @@ import { tokens, useTheme } from '../theme';
 import { DashboardCard, BarcodeScannerModal } from '../components';
 import { useApp, useAuth } from '../context';
 import pdfService from '../utils/pdfService';
+import { getFinancialYear } from '../utils/fyHelpers';
 
 export const DashboardScreen: React.FC = () => {
     const {
@@ -23,11 +24,14 @@ export const DashboardScreen: React.FC = () => {
         sales,
         expenses,
         credits,
-        addSale,
-        addExpense,
-        addCredit,
+        companies,
+        selectedCompanyId,
+        setSelectedCompanyId,
         getCashBalance,
-        getUPIBalance
+        getUPIBalance,
+        selectedFY,
+        setSelectedFY,
+        availableFYs
     } = useApp();
     const { colors } = useTheme();
     const navigation = useNavigation<any>();
@@ -38,6 +42,8 @@ export const DashboardScreen: React.FC = () => {
     const [isExporting, setIsExporting] = React.useState(false);
     const [pageIndex, setPageIndex] = React.useState(0);
     const [balanceVisible, setBalanceVisible] = React.useState(true);
+    const [fyModalVisible, setFyModalVisible] = React.useState(false);
+    const [companyModalVisible, setCompanyModalVisible] = React.useState(false);
 
     const { width, height } = useWindowDimensions();
     const isSmallDevice = height < 700;
@@ -53,9 +59,23 @@ export const DashboardScreen: React.FC = () => {
     const styles = useMemo(() => createStyles(colors, isSmallDevice), [colors, isSmallDevice]);
 
     const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-    const salesForToday = useMemo(() => sales.filter(s => s.date === today), [sales, today]);
-    const expensesForToday = useMemo(() => expenses.filter(e => e.date === today), [expenses, today]);
-    const creditsForToday = useMemo(() => credits.filter(c => c.date === today), [credits, today]);
+    const filteredSales = useMemo(() => {
+        return sales.filter(s => getFinancialYear(s.date) === selectedFY && (s.companyId || 'default') === selectedCompanyId);
+    }, [sales, selectedFY, selectedCompanyId]);
+
+    const salesForToday = useMemo(() => filteredSales.filter(s => s.date === today), [filteredSales, today]);
+
+    const filteredExpenses = useMemo(() => {
+        return expenses.filter(e => getFinancialYear(e.date) === selectedFY && (e.companyId || 'default') === selectedCompanyId);
+    }, [expenses, selectedFY, selectedCompanyId]);
+
+    const expensesForToday = useMemo(() => filteredExpenses.filter(e => e.date === today), [filteredExpenses, today]);
+
+    const filteredCredits = useMemo(() => {
+        return credits.filter(c => getFinancialYear(c.date) === selectedFY && (c.companyId || 'default') === selectedCompanyId);
+    }, [credits, selectedFY, selectedCompanyId]);
+
+    const creditsForToday = useMemo(() => filteredCredits.filter(c => c.date === today), [filteredCredits, today]);
 
     const { role, canViewReports } = useAuth();
     const isOwner = role === 'owner';
@@ -77,7 +97,7 @@ export const DashboardScreen: React.FC = () => {
     const currency = settings.currency;
     const cashBalance = getCashBalance();
     const upiBalance = getUPIBalance();
-    const lowStockItems = products.filter(p => p.stock <= (p.minStockLevel || 5)).length;
+    const lowStockItems = products.filter(p => (p.companyId || 'default') === selectedCompanyId && p.stock <= (p.minStockLevel || 5)).length;
 
     const handleScroll = (event: any) => {
         const scrollPosition = event.nativeEvent.contentOffset.x;
@@ -158,6 +178,45 @@ export const DashboardScreen: React.FC = () => {
                                 <View>
                                     <Text style={styles.greeting}>Welcome back! 👋</Text>
                                     <Text style={styles.title}>{settings.businessName || 'Math Note'}</Text>
+                                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                                        {/* Company Selector */}
+                                        <Pressable
+                                            onPress={() => setCompanyModalVisible(true)}
+                                            style={{
+                                                backgroundColor: colors.brand.primary + '15',
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                                borderRadius: 12,
+                                                borderWidth: 1,
+                                                borderColor: colors.brand.primary + '30',
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand.primary }}>
+                                                {selectedCompanyId === 'default' ? 'Default Company' : (companies.find(c => c.id === selectedCompanyId)?.name || 'Default Company')}
+                                            </Text>
+                                            <Text style={{ fontSize: 10, color: colors.brand.primary, marginLeft: 3 }}>▼</Text>
+                                        </Pressable>
+
+                                        {/* Financial Year Selector */}
+                                        <Pressable
+                                            onPress={() => setFyModalVisible(true)}
+                                            style={{
+                                                backgroundColor: colors.brand.primary + '15',
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                                borderRadius: 12,
+                                                borderWidth: 1,
+                                                borderColor: colors.brand.primary + '30',
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brand.primary }}>FY {selectedFY}</Text>
+                                            <Text style={{ fontSize: 10, color: colors.brand.primary, marginLeft: 3 }}>▼</Text>
+                                        </Pressable>
+                                    </View>
                                 </View>
                                 <Pressable onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
                                     <SettingsIcon size={24} color={colors.text.secondary} />
@@ -338,7 +397,7 @@ export const DashboardScreen: React.FC = () => {
                                         )}
                                     >
                                         <View style={styles.activityList}>
-                                            {sales.slice(-3).reverse().map((sale, index) => (
+                                            {filteredSales.slice(-3).reverse().map((sale, index) => (
                                                 <View key={sale.id} style={[styles.activityItem, index === 2 && { borderBottomWidth: 0 }]}>
                                                     <View style={styles.activityIcon}>
                                                         <FileText size={20} color={colors.brand.primary} />
@@ -350,7 +409,7 @@ export const DashboardScreen: React.FC = () => {
                                                     {canViewReports && <Text style={styles.activityAmount}>{currency}{(parseFloat(sale.totalAmount as any) || 0).toLocaleString()}</Text>}
                                                 </View>
                                             ))}
-                                            {sales.length === 0 && <Text style={styles.emptyActivity}>No recent transactions</Text>}
+                                            {filteredSales.length === 0 && <Text style={styles.emptyActivity}>No recent transactions</Text>}
                                         </View>
                                     </DashboardCard>
                                 </View>
@@ -401,6 +460,93 @@ export const DashboardScreen: React.FC = () => {
                 onScan={handleBarcodeScan}
                 colors={colors}
             />
+
+            <Modal
+                visible={fyModalVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setFyModalVisible(false)}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setFyModalVisible(false)}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.semantic.surface, borderRadius: 16, padding: 20 }]}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text.primary, marginBottom: 12 }}>Select Financial Year</Text>
+                        {availableFYs.map(fy => (
+                            <Pressable
+                                key={fy}
+                                onPress={() => {
+                                    setSelectedFY(fy);
+                                    setFyModalVisible(false);
+                                }}
+                                style={{
+                                    paddingVertical: 12,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: colors.border.default,
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <Text style={{ fontSize: 14, color: colors.text.primary, fontWeight: selectedFY === fy ? '700' : '400' }}>FY {fy}</Text>
+                                {selectedFY === fy && <Text style={{ color: colors.brand.primary, fontSize: 14 }}>✓</Text>}
+                            </Pressable>
+                        ))}
+                    </View>
+                </Pressable>
+            </Modal>
+
+            <Modal
+                visible={companyModalVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setCompanyModalVisible(false)}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setCompanyModalVisible(false)}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.semantic.surface, borderRadius: 16, padding: 20 }]}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text.primary, marginBottom: 12 }}>Select Active Company</Text>
+                        
+                        {/* Default Company Option */}
+                        <Pressable
+                            onPress={() => {
+                                setSelectedCompanyId('default');
+                                setCompanyModalVisible(false);
+                            }}
+                            style={{
+                                paddingVertical: 12,
+                                borderBottomWidth: 1,
+                                borderBottomColor: colors.border.default,
+                                flexDirection: 'row',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}
+                        >
+                            <Text style={{ fontSize: 14, color: colors.text.primary, fontWeight: selectedCompanyId === 'default' ? '700' : '400' }}>Default Company</Text>
+                            {selectedCompanyId === 'default' && <Text style={{ color: colors.brand.primary, fontSize: 14 }}>✓</Text>}
+                        </Pressable>
+
+                        {/* List of Custom Companies */}
+                        {companies.map(c => (
+                            <Pressable
+                                key={c.id}
+                                onPress={() => {
+                                    setSelectedCompanyId(c.id);
+                                    setCompanyModalVisible(false);
+                                }}
+                                style={{
+                                    paddingVertical: 12,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: colors.border.default,
+                                    flexDirection: 'row',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <Text style={{ fontSize: 14, color: colors.text.primary, fontWeight: selectedCompanyId === c.id ? '700' : '400' }}>{c.name}</Text>
+                                {selectedCompanyId === c.id && <Text style={{ color: colors.brand.primary, fontSize: 14 }}>✓</Text>}
+                            </Pressable>
+                        ))}
+                    </View>
+                </Pressable>
+            </Modal>
         </SafeAreaView>
     );
 };

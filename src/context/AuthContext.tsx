@@ -96,8 +96,8 @@ interface AuthContextType {
     login: (pin: string, userId?: string) => Promise<boolean>;
     loginWithPassword: (username: string, password: string) => Promise<boolean>;
     logout: () => Promise<void>;
-    addUser: (name: string, role: UserRole, pin: string) => Promise<void>;
-    updateUser: (id: string, updates: Partial<User>) => Promise<void>;
+    addUser: (name: string, username: string, passwordPlain: string, role: UserRole, pin: string) => Promise<void>;
+    updateUser: (id: string, updates: Partial<User> & { passwordPlain?: string }) => Promise<void>;
     deleteUser: (id: string) => Promise<void>;
     users: User[];
     // Permissions
@@ -206,13 +206,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await updateSettings({ currentUserId: undefined });
     }, [updateSettings]);
 
-    const addUser = useCallback(async (name: string, role: UserRole, pin: string) => {
-        const username = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const hashedPassword = hashPassword(pin); // use PIN as default password
+    const addUser = useCallback(async (name: string, username: string, passwordPlain: string, role: UserRole, pin: string) => {
+        const hashedPassword = hashPassword(passwordPlain);
         const newUser: User = {
             id: `user-${Date.now()}`,
             name,
-            username,
+            username: username.toLowerCase().trim(),
             password: hashedPassword,
             role,
             pin,
@@ -223,12 +222,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await updateSettings({ users: newUsers });
     }, [users, updateSettings]);
 
-    const updateUser = useCallback(async (id: string, updates: Partial<User>) => {
-        const newUsers = users.map(u => u.id === id ? { ...u, ...updates } : u);
+    const updateUser = useCallback(async (id: string, updates: Partial<User> & { passwordPlain?: string }) => {
+        let finalUpdates = { ...updates };
+        if (updates.passwordPlain) {
+            finalUpdates.password = hashPassword(updates.passwordPlain);
+            delete finalUpdates.passwordPlain;
+        }
+        const newUsers = users.map(u => u.id === id ? { ...u, ...finalUpdates } : u);
         setUsers(newUsers);
         await updateSettings({ users: newUsers });
         if (currentUser?.id === id) {
-            setCurrentUser({ ...currentUser, ...updates });
+            setCurrentUser({ ...currentUser, ...finalUpdates });
         }
     }, [users, currentUser, updateSettings]);
 
@@ -245,7 +249,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Permissions based on roles
     const role = currentUser?.role || null;
-    const canManageSettings = role === 'owner';
+    const canManageSettings = role === 'owner' || users.length === 0;
     const canDelete = role === 'owner'; // Managers can't delete based on requirements
     const canViewReports = role === 'owner' || role === 'manager';
 
