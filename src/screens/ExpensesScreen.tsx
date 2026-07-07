@@ -317,103 +317,110 @@ export const ExpensesScreen: React.FC = () => {
             )}
 
             {modalVisible && (
-                <Modal visible={modalVisible} animationType="slide" transparent={true}>
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={styles.modalOverlay}
-                >
-                    <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
-                    <View style={styles.bottomSheet}>
-                        <View style={styles.handleContainer}><View style={styles.handleBar} /></View>
-                        <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
-                            <View style={styles.sheetContent}>
-                                <Text style={styles.modalTitle}>{editingExpense ? 'Edit Expense' : 'Add Expense'}</Text>
+                <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+                    <View style={styles.modalOverlay}>
+                        <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)} />
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                            style={styles.sheetWrapper}
+                        >
+                            <View style={styles.bottomSheet}>
+                                <View style={styles.handleContainer}><View style={styles.handleBar} /></View>
+                                <ScrollView
+                                    style={styles.sheetScroll}
+                                    contentContainerStyle={styles.sheetContentContainer}
+                                    showsVerticalScrollIndicator={false}
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    <View style={styles.sheetContent}>
+                                        <Text style={styles.modalTitle}>{editingExpense ? 'Edit Expense' : 'Add Expense'}</Text>
 
-                                {/* Business Categories */}
-                                <Text style={styles.categoryGroupLabel}>📦 Business</Text>
-                                <View style={styles.categoryGrid}>
-                                    {BUSINESS_CATEGORIES.map((cat) => (
-                                        <TouchableOpacity
-                                            key={cat.id}
-                                            style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
-                                            onPress={() => setCategory(cat.id)}
-                                        >
-                                            <cat.Icon size={18} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
-                                            <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]} numberOfLines={1}>{cat.label}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
+                                        {/* Business Categories */}
+                                        <Text style={styles.categoryGroupLabel}>📦 Business</Text>
+                                        <View style={styles.categoryGrid}>
+                                            {BUSINESS_CATEGORIES.map((cat) => (
+                                                <TouchableOpacity
+                                                    key={cat.id}
+                                                    style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
+                                                    onPress={() => setCategory(cat.id)}
+                                                >
+                                                    <cat.Icon size={18} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
+                                                    <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]} numberOfLines={1}>{cat.label}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
 
-                                {/* Personal Categories */}
-                                <Text style={styles.categoryGroupLabel}>🏠 Personal</Text>
-                                <View style={styles.categoryGrid}>
-                                    {PERSONAL_CATEGORIES.map((cat) => (
-                                        <TouchableOpacity
-                                            key={cat.id}
-                                            style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
-                                            onPress={() => setCategory(cat.id)}
-                                        >
-                                            <cat.Icon size={18} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
-                                            <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]} numberOfLines={1}>{cat.label}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
+                                        {/* Personal Categories */}
+                                        <Text style={styles.categoryGroupLabel}>🏠 Personal</Text>
+                                        <View style={styles.categoryGrid}>
+                                            {PERSONAL_CATEGORIES.map((cat) => (
+                                                <TouchableOpacity
+                                                    key={cat.id}
+                                                    style={[styles.categoryItem, category === cat.id && styles.categorySelected]}
+                                                    onPress={() => setCategory(cat.id)}
+                                                >
+                                                    <cat.Icon size={18} color={category === cat.id ? colors.text.inverse : colors.text.primary} strokeWidth={2} />
+                                                    <Text style={[styles.categoryItemLabel, category === cat.id && styles.categoryItemLabelSelected]} numberOfLines={1}>{cat.label}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
 
-                                <Text style={styles.categoryGroupLabel}>🤝 Vendor/Contact</Text>
-                                <ContactPicker
-                                    contacts={companyContacts}
-                                    colors={colors}
-                                    filterType="Vendor"
-                                    onSelect={(contact: Contact) => {
-                                        setVendorName(contact.name);
-                                        setVendorId(contact.id);
-                                    }}
-                                />
+                                        <Text style={styles.categoryGroupLabel}>🤝 Vendor/Contact</Text>
+                                        <ContactPicker
+                                            contacts={companyContacts}
+                                            colors={colors}
+                                            filterType="Vendor"
+                                            onSelect={(contact: Contact) => {
+                                                setVendorName(contact.name);
+                                                setVendorId(contact.id);
+                                            }}
+                                        />
 
-                                <Input
-                                    label="Vendor Name (Manual)"
-                                    placeholder="Enter vendor name"
-                                    value={vendorName}
-                                    onChangeText={setVendorName}
-                                />
+                                        <Input
+                                            label="Vendor Name (Manual)"
+                                            placeholder="Enter vendor name"
+                                            value={vendorName}
+                                            onChangeText={setVendorName}
+                                        />
 
-                                <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
-                                
-                                <Text style={styles.categoryGroupLabel}>💳 Payment Mode</Text>
-                                <View style={styles.paymentMethodRow}>
-                                    {(['Cash', 'UPI'] as const).map((m) => (
-                                        <TouchableOpacity
-                                            key={m}
-                                            style={[
-                                                styles.paymentMethodOption,
-                                                paymentMethod === m && styles.paymentMethodActive
-                                            ]}
-                                            onPress={() => setPaymentMethod(m)}
-                                        >
-                                            <Text style={[
-                                                styles.paymentMethodText,
-                                                paymentMethod === m && styles.paymentMethodTextActive
-                                            ]}>
-                                                {m}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
+                                        <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
 
-                                <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
-                                <View style={styles.modalButtons}>
-                                    <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
-                                        <Text style={styles.cancelBtnText}>Cancel</Text>
-                                    </Pressable>
-                                    <Pressable style={[styles.modalBtn, styles.saveBtn]} onPress={handleSave}>
-                                        <Text style={styles.saveBtnText}>Save</Text>
-                                    </Pressable>
-                                </View>
+                                        <Text style={styles.categoryGroupLabel}>💳 Payment Mode</Text>
+                                        <View style={styles.paymentMethodRow}>
+                                            {(['Cash', 'UPI'] as const).map((m) => (
+                                                <TouchableOpacity
+                                                    key={m}
+                                                    style={[
+                                                        styles.paymentMethodOption,
+                                                        paymentMethod === m && styles.paymentMethodActive
+                                                    ]}
+                                                    onPress={() => setPaymentMethod(m)}
+                                                >
+                                                    <Text style={[
+                                                        styles.paymentMethodText,
+                                                        paymentMethod === m && styles.paymentMethodTextActive
+                                                    ]}>
+                                                        {m}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
+                                        <View style={styles.modalButtons}>
+                                            <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
+                                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                                            </Pressable>
+                                            <Pressable style={[styles.modalBtn, styles.saveBtn]} onPress={handleSave}>
+                                                <Text style={styles.saveBtnText}>Save</Text>
+                                            </Pressable>
+                                        </View>
+                                    </View>
+                                </ScrollView>
                             </View>
-                        </ScrollView>
+                        </KeyboardAvoidingView>
                     </View>
-                </KeyboardAvoidingView>
-            </Modal>
+                </Modal>
             )}
         </SafeAreaView >
     );
@@ -496,18 +503,39 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     },
     floatingButtonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
     floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.semibold },
-    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    sheetWrapper: {
+        width: '100%',
+    },
+    bottomSheet: {
+        backgroundColor: colors.semantic.surface,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        maxHeight: '92%',
+        minHeight: 300,
+    },
+    sheetScroll: {
+        flexGrow: 1,
+        flexShrink: 1,
+    },
+    sheetContentContainer: {
+        flexGrow: 1,
+    },
+    handleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
+    handleBar: { width: 40, height: 4, backgroundColor: colors.border.default, borderRadius: 2 },
+    sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
     paymentMethodRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
     paymentMethodOption: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.semantic.soft, alignItems: 'center' },
     paymentMethodActive: { backgroundColor: colors.brand.primary },
     paymentMethodText: { fontSize: 14, fontFamily: tokens.typography.fontFamily.medium, color: colors.text.primary },
     paymentMethodTextActive: { color: colors.text.inverse },
-    modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
-    bottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '85%' },
-    handleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },
-    handleBar: { width: 40, height: 4, backgroundColor: colors.border.default, borderRadius: 2 },
-    sheetScroll: { flex: 1 },
-    sheetContent: { padding: tokens.spacing.lg, paddingBottom: tokens.spacing.xxl },
     modalTitle: { fontSize: tokens.typography.sizes.xl, color: colors.text.primary, marginBottom: tokens.spacing.md, textAlign: 'center', fontFamily: tokens.typography.fontFamily.bold },
     categoryGroupLabel: { fontSize: tokens.typography.sizes.sm, color: colors.text.primary, marginBottom: tokens.spacing.xs, fontFamily: tokens.typography.fontFamily.medium },
     categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: tokens.spacing.md },
