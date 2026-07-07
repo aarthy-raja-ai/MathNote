@@ -15,8 +15,19 @@ import { useNavigation } from '@react-navigation/native';
 import { User as UserIcon, Plus, Trash2, Shield, UserCog, ChevronLeft } from 'lucide-react-native';
 import { Card, Input } from '../components';
 import { tokens, useTheme } from '../theme';
-import { useAuth } from '../context/AuthContext';
-import { UserRole, User } from '../utils/storage';
+import { useAuth, getDefaultPermissions } from '../context/AuthContext';
+import { UserRole, User, UserPermissions } from '../utils/storage';
+
+const MODULES = [
+    { id: 'sales' as keyof UserPermissions, label: 'Sales & Customers' },
+    { id: 'purchases' as keyof UserPermissions, label: 'Purchases & Vendors' },
+    { id: 'inventory' as keyof UserPermissions, label: 'Inventory & Products' },
+    { id: 'staff' as keyof UserPermissions, label: 'Staff & Users' },
+    { id: 'expenses' as keyof UserPermissions, label: 'Expenses' },
+    { id: 'credits' as keyof UserPermissions, label: 'Credits' },
+    { id: 'reports' as keyof UserPermissions, label: 'Reports & Analytics' },
+    { id: 'settings' as keyof UserPermissions, label: 'Settings & Backups' },
+];
 
 export const UserManagerScreen: React.FC = () => {
     const { colors } = useTheme();
@@ -30,6 +41,8 @@ export const UserManagerScreen: React.FC = () => {
     const [password, setPassword] = useState('');
     const [role, setRole] = useState<UserRole>('staff');
     const [pin, setPin] = useState('');
+    const [modalTab, setModalTab] = useState<'user' | 'rights'>('user');
+    const [permissions, setPermissions] = useState<UserPermissions>(getDefaultPermissions('staff'));
 
     const styles = React.useMemo(() => createStyles(colors), [colors]);
 
@@ -40,6 +53,8 @@ export const UserManagerScreen: React.FC = () => {
         setPassword('');
         setRole('staff');
         setPin('');
+        setPermissions(getDefaultPermissions('staff'));
+        setModalTab('user');
         setModalVisible(true);
     };
 
@@ -50,6 +65,8 @@ export const UserManagerScreen: React.FC = () => {
         setPassword('');
         setRole(user.role);
         setPin(user.pin);
+        setPermissions(user.permissions || getDefaultPermissions(user.role));
+        setModalTab('user');
         setModalVisible(true);
     };
 
@@ -59,7 +76,7 @@ export const UserManagerScreen: React.FC = () => {
         if (pin.length !== 4) { Alert.alert('Error', 'PIN must be exactly 4 digits'); return; }
 
         if (editingUser) {
-            const updates: Record<string, any> = { name, username: username.trim(), role, pin };
+            const updates: Record<string, any> = { name, username: username.trim(), role, pin, permissions };
             if (password.trim()) {
                 if (password.length < 4) { Alert.alert('Error', 'Password must be at least 4 characters'); return; }
                 updates.passwordPlain = password;
@@ -69,13 +86,24 @@ export const UserManagerScreen: React.FC = () => {
         } else {
             if (!password.trim()) { Alert.alert('Error', 'Please enter a password'); return; }
             if (password.length < 4) { Alert.alert('Error', 'Password must be at least 4 characters'); return; }
-            await addUser(name, username.trim(), password, role, pin);
+            await addUser(name, username.trim(), password, role, pin, permissions);
             Alert.alert('Success', 'New user added successfully');
         }
         setPin('');
         setUsername('');
         setPassword('');
         setModalVisible(false);
+    };
+
+    const handleRoleChange = (newRole: UserRole) => {
+        setRole(newRole);
+        setPermissions(getDefaultPermissions(newRole));
+    };
+
+    const handleTogglePermission = (key: keyof UserPermissions, action: 'view' | 'add' | 'modify' | 'delete') => {
+        const updated = { ...permissions };
+        updated[key] = { ...updated[key], [action]: !updated[key][action] };
+        setPermissions(updated);
     };
 
     const handleDelete = (id: string) => {
@@ -150,58 +178,117 @@ export const UserManagerScreen: React.FC = () => {
                 <Text style={styles.fabText}>Add User</Text>
             </TouchableOpacity>
 
-            <Modal visible={modalVisible} animationType="slide" transparent>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>{editingUser ? 'Edit User' : 'Add New User'}</Text>
+            {modalVisible && (
+                <Modal visible={modalVisible} animationType="slide" transparent>
+                    <View style={styles.modalOverlay}>
+                        <View style={[styles.modalContent, { height: '80%' }]}>
+                            <Text style={styles.modalTitle}>{editingUser ? 'Edit User' : 'Add New User'}</Text>
 
-                        <Input
-                            label="Name"
-                            placeholder="Employee Name"
-                            value={name}
-                            onChangeText={setName}
-                        />
-
-                        <Input
-                            label="Username"
-                            placeholder="e.g. ravi_staff"
-                            value={username}
-                            onChangeText={setUsername}
-                            autoCapitalize="none"
-                        />
-
-                        <Input
-                            label={editingUser ? "Password (leave blank to keep current)" : "Password"}
-                            placeholder={editingUser ? "Leave blank to keep unchanged" : "At least 4 characters"}
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                            autoCapitalize="none"
-                        />
-
-                        <Text style={styles.label}>Role</Text>
-                        <View style={styles.roleSelector}>
-                            {(['staff', 'manager', 'owner'] as UserRole[]).map((r) => (
-                                <TouchableOpacity
-                                    key={r}
-                                    style={[styles.roleOption, role === r && { backgroundColor: colors.brand.primary }]}
-                                    onPress={() => setRole(r)}
-                                >
-                                    <Text style={[styles.roleText, role === r && { color: colors.text.inverse }]}>
-                                        {r.charAt(0).toUpperCase() + r.slice(1)}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                        {/* Modal Tabs */}
+                        <View style={styles.modalTabRow}>
+                            <TouchableOpacity
+                                style={[styles.modalTabButton, modalTab === 'user' && styles.modalTabButtonActive]}
+                                onPress={() => setModalTab('user')}
+                            >
+                                <Text style={[styles.modalTabText, modalTab === 'user' && styles.modalTabTextActive]}>User Info</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalTabButton, modalTab === 'rights' && styles.modalTabButtonActive]}
+                                onPress={() => setModalTab('rights')}
+                            >
+                                <Text style={[styles.modalTabText, modalTab === 'rights' && styles.modalTabTextActive]}>Access Rights</Text>
+                            </TouchableOpacity>
                         </View>
 
-                        <Input
-                            label="4-Digit PIN"
-                            placeholder="0000"
-                            value={pin}
-                            onChangeText={setPin}
-                            keyboardType="numeric"
-                            maxLength={4}
-                        />
+                        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                            {modalTab === 'user' ? (
+                                <View style={{ paddingBottom: 16 }}>
+                                    <Input
+                                        label="Name"
+                                        placeholder="Employee Name"
+                                        value={name}
+                                        onChangeText={setName}
+                                    />
+
+                                    <Input
+                                        label="Username"
+                                        placeholder="e.g. ravi_staff"
+                                        value={username}
+                                        onChangeText={setUsername}
+                                        autoCapitalize="none"
+                                    />
+
+                                    <Input
+                                        label={editingUser ? "Password (leave blank to keep current)" : "Password"}
+                                        placeholder={editingUser ? "Leave blank to keep unchanged" : "At least 4 characters"}
+                                        value={password}
+                                        onChangeText={setPassword}
+                                        secureTextEntry
+                                        autoCapitalize="none"
+                                    />
+
+                                    <Text style={styles.label}>Role</Text>
+                                    <View style={styles.roleSelector}>
+                                        {(['staff', 'manager', 'owner'] as UserRole[]).map((r) => (
+                                            <TouchableOpacity
+                                                key={r}
+                                                style={[styles.roleOption, role === r && { backgroundColor: colors.brand.primary }]}
+                                                onPress={() => handleRoleChange(r)}
+                                            >
+                                                <Text style={[styles.roleText, role === r && { color: colors.text.inverse }]}>
+                                                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+
+                                    <Input
+                                        label="4-Digit PIN"
+                                        placeholder="0000"
+                                        value={pin}
+                                        onChangeText={setPin}
+                                        keyboardType="numeric"
+                                        maxLength={4}
+                                    />
+                                </View>
+                            ) : (
+                                <View style={styles.moduleList}>
+                                    {role === 'owner' ? (
+                                        <Text style={styles.ownerNote}>
+                                            Note: Admin/Owner role will override these settings and get full access
+                                        </Text>
+                                    ) : (
+                                        MODULES.map((mod) => {
+                                            const perm = permissions[mod.id] || { view: false, add: false, modify: false, delete: false };
+                                            return (
+                                                <View key={mod.id} style={styles.moduleContainer}>
+                                                    <Text style={styles.moduleHeader}>{mod.label}</Text>
+                                                    <View style={styles.actionPillsRow}>
+                                                        {(['view', 'add', 'modify', 'delete'] as const).map((action) => (
+                                                            <TouchableOpacity
+                                                                key={action}
+                                                                style={[
+                                                                    styles.actionPill,
+                                                                    perm[action] && styles.actionPillActive
+                                                                ]}
+                                                                onPress={() => handleTogglePermission(mod.id, action)}
+                                                            >
+                                                                <Text style={[
+                                                                    styles.actionPillText,
+                                                                    perm[action] && styles.actionPillTextActive
+                                                                ]}>
+                                                                    {action.charAt(0).toUpperCase() + action.slice(1, 3)}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                </View>
+                                            );
+                                        })
+                                    )}
+                                </View>
+                            )}
+                        </ScrollView>
 
                         <View style={styles.modalButtons}>
                             <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
@@ -214,6 +301,7 @@ export const UserManagerScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
+            )}
         </SafeAreaView>
     );
 };
@@ -266,4 +354,20 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
     cancelBtnText: { color: colors.text.primary, fontFamily: tokens.typography.fontFamily.bold },
     saveBtn: { backgroundColor: colors.brand.primary },
     saveBtnText: { color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
+    
+    modalTabRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.semantic.soft, marginBottom: 16 },
+    modalTabButton: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+    modalTabButtonActive: { borderBottomWidth: 2, borderBottomColor: colors.brand.primary },
+    modalTabText: { fontSize: 14, fontFamily: tokens.typography.fontFamily.medium, color: colors.text.muted },
+    modalTabTextActive: { color: colors.brand.primary, fontFamily: tokens.typography.fontFamily.bold },
+    
+    moduleList: { paddingBottom: 16 },
+    moduleContainer: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.semantic.soft },
+    moduleHeader: { fontSize: 14, fontFamily: tokens.typography.fontFamily.semibold, color: colors.text.primary, marginBottom: 8 },
+    actionPillsRow: { flexDirection: 'row', gap: 6 },
+    actionPill: { flex: 1, paddingVertical: 6, borderRadius: 6, backgroundColor: colors.semantic.soft, alignItems: 'center' },
+    actionPillActive: { backgroundColor: colors.brand.primary },
+    actionPillText: { fontSize: 12, fontFamily: tokens.typography.fontFamily.medium, color: colors.text.secondary },
+    actionPillTextActive: { color: colors.text.inverse, fontFamily: tokens.typography.fontFamily.bold },
+    ownerNote: { padding: 12, backgroundColor: colors.brand.primary + '10', borderRadius: 8, color: colors.brand.primary, fontSize: 13, fontFamily: tokens.typography.fontFamily.medium, textAlign: 'center', marginVertical: 16 },
 });

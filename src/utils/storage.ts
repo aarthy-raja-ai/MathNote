@@ -304,6 +304,24 @@ export interface Credit {
 
 export type UserRole = 'owner' | 'manager' | 'staff';
 
+export interface UserPermissionActions {
+    view: boolean;
+    add: boolean;
+    modify: boolean;
+    delete: boolean;
+}
+
+export interface UserPermissions {
+    sales: UserPermissionActions;
+    purchases: UserPermissionActions;
+    inventory: UserPermissionActions;
+    expenses: UserPermissionActions;
+    credits: UserPermissionActions;
+    reports: UserPermissionActions;
+    staff: UserPermissionActions;
+    settings: UserPermissionActions;
+}
+
 export interface User {
     id: string;
     companyId?: string;
@@ -313,6 +331,7 @@ export interface User {
     role: UserRole;
     pin: string;
     createdAt: string;
+    permissions?: UserPermissions;
 }
 
 export interface Settings {
@@ -379,8 +398,10 @@ export interface Product {
     category?: string;
     minStockLevel?: number;
     createdAt: string;
-    barcode?: string;
+    barcode?: string;        // primary barcode (legacy)
+    barcodes?: string[];     // multiple barcodes support
 }
+
 
 export interface SaleReturn {
     id: string;

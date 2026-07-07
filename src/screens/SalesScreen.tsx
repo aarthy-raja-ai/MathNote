@@ -72,7 +72,7 @@ export const SalesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { sales, addSale, updateSale, deleteSale, addReturn, settings, updateSettings, contacts, products, returns, selectedFY, selectedCompanyId } = useApp();
-    const { canDelete } = useAuth();
+    const { canDelete, hasPermission } = useAuth();
     const { colors } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -591,9 +591,11 @@ export const SalesScreen: React.FC = () => {
                 />
             </Animated.View>
 
-            <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
-                <Text style={styles.floatingButtonText}>+ Add Sale</Text>
-            </Pressable>
+            {hasPermission('sales', 'add') && (
+                <Pressable style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]} onPress={handleAdd}>
+                    <Text style={styles.floatingButtonText}>+ Add Sale</Text>
+                </Pressable>
+            )}
 
             {/* Date Picker Modal */}
             <Modal visible={datePickerVisible} animationType="fade" transparent={true}>

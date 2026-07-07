@@ -13,12 +13,14 @@ import {
     Animated,
     Dimensions,
     TextInput,
+    TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import {
     Package,
     Search,
+    ShoppingCart,
     X,
     Plus,
     Edit2,
@@ -57,6 +59,8 @@ export const InventoryScreen: React.FC = () => {
     const [minStockLevel, setMinStockLevel] = useState('');
     const [barcode, setBarcode] = useState('');
     const [isScannerVisible, setIsScannerVisible] = useState(false);
+    const [extraBarcodes, setExtraBarcodes] = useState<string[]>([]);
+    const [barcodeInputText, setBarcodeInputText] = useState('');
 
     const sheetAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -127,6 +131,8 @@ export const InventoryScreen: React.FC = () => {
             setCategory(product.category || '');
             setMinStockLevel((product.minStockLevel ?? '5').toString());
             setBarcode(product.barcode || '');
+            setExtraBarcodes(product.barcodes || []);
+            setBarcodeInputText('');
         } else {
             setEditingProduct(null);
             setName('');
@@ -136,6 +142,8 @@ export const InventoryScreen: React.FC = () => {
             setCategory('');
             setMinStockLevel('5');
             setBarcode('');
+            setExtraBarcodes([]);
+            setBarcodeInputText('');
         }
         setModalVisible(true);
         Animated.spring(sheetAnim, {
@@ -170,6 +178,7 @@ export const InventoryScreen: React.FC = () => {
             category: category.trim() || 'General',
             minStockLevel: minStockLevel ? parseInt(minStockLevel) : undefined,
             barcode: barcode.trim() || undefined,
+            barcodes: extraBarcodes.filter(b => b.trim()),
         };
 
         if (editingProduct) {
@@ -263,8 +272,22 @@ export const InventoryScreen: React.FC = () => {
                         <Text style={[styles.title, { color: colors.brand.secondary }]}>Inventory</Text>
                         <Text style={[styles.subtitle, { color: colors.text.secondary }]}>Manage products and stock</Text>
                     </View>
-                    <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
-                        <Package color={colors.brand.primary} size={28} />
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <TouchableOpacity
+                            style={[
+                                styles.headerAddBtn,
+                                {
+                                    backgroundColor: colors.semantic.surface,
+                                    borderColor: colors.border.default,
+                                }
+                            ]}
+                            onPress={() => navigation.navigate('Purchases', { openAddModal: true })}
+                        >
+                            <ShoppingCart size={22} color={colors.brand.primary} />
+                        </TouchableOpacity>
+                        <View style={[styles.iconWrapper, { backgroundColor: colors.brand.primary + '15' }]}>
+                            <Package color={colors.brand.primary} size={28} />
+                        </View>
                     </View>
                 </View>
 
@@ -384,7 +407,7 @@ export const InventoryScreen: React.FC = () => {
                                 <View style={styles.formRow}>
                                     <View style={{ flex: 1 }}>
                                         <Input
-                                            label="Barcode / UPC"
+                                            label="Primary Barcode / UPC"
                                             placeholder="Scan or enter barcode"
                                             value={barcode}
                                             onChangeText={setBarcode}
@@ -395,6 +418,53 @@ export const InventoryScreen: React.FC = () => {
                                             )}
                                         />
                                     </View>
+                                </View>
+
+                                {/* Extra Barcodes Manager */}
+                                <Text style={{ fontSize: tokens.typography.sizes.sm, color: colors.text.secondary, marginBottom: 6, marginTop: 4 }}>Additional Barcodes</Text>
+                                {extraBarcodes.length > 0 && (
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                                        {extraBarcodes.map((bc, idx) => (
+                                            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.semantic.soft, borderWidth: 1, borderColor: colors.border.default, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                                                <Text style={{ fontFamily: 'monospace', fontSize: 13, color: colors.text.primary, marginRight: 6 }}>{bc}</Text>
+                                                <TouchableOpacity onPress={() => setExtraBarcodes(extraBarcodes.filter((_, i) => i !== idx))}>
+                                                    <X size={14} color={colors.semantic.error} />
+                                                </TouchableOpacity>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                    <TextInput
+                                        style={{ flex: 1, borderWidth: 1, borderColor: colors.border.default, borderRadius: tokens.radius.md, paddingHorizontal: 12, paddingVertical: 8, color: colors.text.primary, fontFamily: 'monospace', fontSize: 13, backgroundColor: colors.semantic.soft }}
+                                        placeholder="Add barcode & tap +"
+                                        placeholderTextColor={colors.text.muted}
+                                        value={barcodeInputText}
+                                        onChangeText={setBarcodeInputText}
+                                        onSubmitEditing={() => {
+                                            if (barcodeInputText.trim()) {
+                                                setExtraBarcodes([...extraBarcodes, barcodeInputText.trim()]);
+                                                setBarcodeInputText('');
+                                            }
+                                        }}
+                                    />
+                                    <TouchableOpacity
+                                        onPress={() => setIsScannerVisible(true)}
+                                        style={{ padding: 8, backgroundColor: colors.semantic.soft, borderRadius: tokens.radius.md, borderWidth: 1, borderColor: colors.border.default }}
+                                    >
+                                        <Maximize size={18} color={colors.brand.primary} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            if (barcodeInputText.trim()) {
+                                                setExtraBarcodes([...extraBarcodes, barcodeInputText.trim()]);
+                                                setBarcodeInputText('');
+                                            }
+                                        }}
+                                        style={{ padding: 8, backgroundColor: colors.brand.primary, borderRadius: tokens.radius.md }}
+                                    >
+                                        <Plus size={18} color={colors.text.inverse} />
+                                    </TouchableOpacity>
                                 </View>
 
                                 <View style={styles.modalButtons}>
@@ -415,7 +485,15 @@ export const InventoryScreen: React.FC = () => {
                 visible={isScannerVisible}
                 onClose={() => setIsScannerVisible(false)}
                 onScan={(data) => {
-                    setBarcode(data);
+                    if (barcodeInputText !== undefined && barcodeInputText !== '') {
+                        // Adding extra barcode from scanner
+                        setExtraBarcodes(prev => [...prev, data]);
+                        setBarcodeInputText('');
+                    } else if (!barcode) {
+                        setBarcode(data);
+                    } else {
+                        setExtraBarcodes(prev => [...prev, data]);
+                    }
                     setIsScannerVisible(false);
                 }}
                 colors={colors}
@@ -428,6 +506,7 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     content: { flex: 1, paddingHorizontal: tokens.spacing.lg },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: tokens.spacing.lg },
+    headerAddBtn: { padding: tokens.spacing.xs, borderRadius: tokens.radius.pill, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
     title: { fontSize: 28, fontFamily: tokens.typography.fontFamily.bold },
     subtitle: { fontSize: 14, fontFamily: tokens.typography.fontFamily.regular, marginTop: 4 },
     iconWrapper: { width: 56, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },

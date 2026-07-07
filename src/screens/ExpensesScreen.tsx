@@ -63,6 +63,7 @@ export const ExpensesScreen: React.FC = () => {
     const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [dateInputValue, setDateInputValue] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI'>('Cash');
 
     const slideAnim = useRef(new Animated.Value(100)).current;
 
@@ -86,6 +87,7 @@ export const ExpensesScreen: React.FC = () => {
         setCategory('other');
         setVendorName('');
         setVendorId('');
+        setPaymentMethod('Cash');
         setModalVisible(true);
     };
 
@@ -96,6 +98,7 @@ export const ExpensesScreen: React.FC = () => {
         setCategory(expense.category);
         setVendorName(expense.vendorName || '');
         setVendorId(expense.vendorId || '');
+        setPaymentMethod(expense.paymentMethod || 'Cash');
         setModalVisible(true);
     };
 
@@ -118,9 +121,9 @@ export const ExpensesScreen: React.FC = () => {
         }
 
         if (editingExpense) {
-            await updateExpense(editingExpense.id, { amount: parsedAmount, note, category, vendorName, vendorId });
+            await updateExpense(editingExpense.id, { amount: parsedAmount, note, category, vendorName, vendorId, paymentMethod });
         } else {
-            await addExpense({ date: selectedDate || today, amount: parsedAmount, note, category, vendorName, vendorId });
+            await addExpense({ date: selectedDate || today, amount: parsedAmount, note, category, vendorName, vendorId, paymentMethod });
         }
         setModalVisible(false);
     };
@@ -195,6 +198,7 @@ export const ExpensesScreen: React.FC = () => {
         // Build subtitle parts
         const subtitleParts: string[] = [];
         if (item.note) subtitleParts.push(item.note);
+        subtitleParts.push(item.paymentMethod || 'Cash');
         if (!isToday) subtitleParts.push(new Date(item.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
 
         return (
@@ -272,17 +276,16 @@ export const ExpensesScreen: React.FC = () => {
                 />
             </Animated.View>
 
-            <View style={styles.buttonContainer}>
-                <Pressable
-                    style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]}
-                    onPress={handleAdd}
-                >
-                    <Text style={styles.floatingButtonText}>+ Add Expense</Text>
-                </Pressable>
-            </View>
+            <Pressable
+                style={({ pressed }) => [styles.floatingButton, pressed && styles.floatingButtonPressed]}
+                onPress={handleAdd}
+            >
+                <Text style={styles.floatingButtonText}>+ Add Expense</Text>
+            </Pressable>
 
             {/* Date Picker Modal */}
-            <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
+            {datePickerVisible && (
+                <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
                 <View style={styles.datePickerOverlay}>
                     <View style={styles.datePickerCard}>
                         <Text style={styles.datePickerTitle}>Select Date</Text>
@@ -311,8 +314,10 @@ export const ExpensesScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
+            )}
 
-            <Modal visible={modalVisible} animationType="slide" transparent={true}>
+            {modalVisible && (
+                <Modal visible={modalVisible} animationType="slide" transparent={true}>
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={styles.modalOverlay}
@@ -373,6 +378,28 @@ export const ExpensesScreen: React.FC = () => {
                                 />
 
                                 <Input label="Amount" placeholder="Enter amount" keyboardType="numeric" value={amount} onChangeText={setAmount} />
+                                
+                                <Text style={styles.categoryGroupLabel}>💳 Payment Mode</Text>
+                                <View style={styles.paymentMethodRow}>
+                                    {(['Cash', 'UPI'] as const).map((m) => (
+                                        <TouchableOpacity
+                                            key={m}
+                                            style={[
+                                                styles.paymentMethodOption,
+                                                paymentMethod === m && styles.paymentMethodActive
+                                            ]}
+                                            onPress={() => setPaymentMethod(m)}
+                                        >
+                                            <Text style={[
+                                                styles.paymentMethodText,
+                                                paymentMethod === m && styles.paymentMethodTextActive
+                                            ]}>
+                                                {m}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
                                 <Input label="Note (optional)" placeholder="Enter note" value={note} onChangeText={setNote} />
                                 <View style={styles.modalButtons}>
                                     <Pressable style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
@@ -387,6 +414,7 @@ export const ExpensesScreen: React.FC = () => {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+            )}
         </SafeAreaView >
     );
 };
@@ -454,28 +482,26 @@ const createStyles = (colors: typeof tokens.colors) => StyleSheet.create({
         paddingHorizontal: tokens.spacing.md,
     },
     floatingButton: {
+        position: 'absolute',
+        bottom: 110,
+        alignSelf: 'center',
         backgroundColor: colors.brand.primary,
         height: 52,
-        flex: 1,
-        maxWidth: 240,
+        minWidth: 200,
         borderRadius: 26,
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: tokens.spacing.lg,
         ...tokens.shadow.floatingButton,
     },
-    scanButton: {
-        backgroundColor: colors.brand.secondary,
-        height: 52,
-        width: 52,
-        borderRadius: 26,
-        justifyContent: 'center',
-        alignItems: 'center',
-        ...tokens.shadow.floatingButton,
-    },
     floatingButtonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
     floatingButtonText: { color: colors.text.inverse, fontSize: tokens.typography.sizes.lg, fontFamily: tokens.typography.fontFamily.semibold },
     modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+    paymentMethodRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+    paymentMethodOption: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.semantic.soft, alignItems: 'center' },
+    paymentMethodActive: { backgroundColor: colors.brand.primary },
+    paymentMethodText: { fontSize: 14, fontFamily: tokens.typography.fontFamily.medium, color: colors.text.primary },
+    paymentMethodTextActive: { color: colors.text.inverse },
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
     bottomSheet: { backgroundColor: colors.semantic.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '85%' },
     handleContainer: { alignItems: 'center', paddingTop: 12, paddingBottom: 8 },

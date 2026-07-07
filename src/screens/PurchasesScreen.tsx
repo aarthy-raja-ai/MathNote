@@ -17,7 +17,7 @@ import {
     TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { Pencil, Trash2, ShoppingCart, Package, Plus } from 'lucide-react-native';
 import { Card, Input, DateFilter, filterByDateRange, getFilterLabel, ContactPicker, ProductPicker } from '../components';
 import type { DateFilterType } from '../components';
@@ -69,6 +69,7 @@ const segmentStyles = StyleSheet.create({
 
 export const PurchasesScreen: React.FC = () => {
     const navigation = useNavigation<any>();
+    const route = useRoute<any>();
     const { purchases, addPurchase, updatePurchase, deletePurchase, settings, contacts, products, selectedFY, selectedCompanyId } = useApp();
     const { canDelete } = useAuth();
     const { colors } = useTheme();
@@ -101,6 +102,13 @@ export const PurchasesScreen: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     const currency = settings.currency;
     const styles = useMemo(() => createStyles(colors), [colors]);
+
+    useEffect(() => {
+        if (route.params?.openAddModal) {
+            handleAdd();
+            navigation.setParams({ openAddModal: undefined });
+        }
+    }, [route.params?.openAddModal]);
 
     useEffect(() => {
         Animated.spring(slideAnim, {
@@ -171,6 +179,7 @@ export const PurchasesScreen: React.FC = () => {
             } else {
                 setDiscountPercent('');
             }
+        } else {
             setDiscountPercent('');
         }
         setGstRate(purchase.gstRate ?? settings.gstRate ?? 0);
@@ -437,7 +446,8 @@ export const PurchasesScreen: React.FC = () => {
             </Pressable>
 
             {/* Date Picker Modal */}
-            <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
+            {datePickerVisible && (
+                <Modal visible={datePickerVisible} animationType="fade" transparent={true}>
                 <View style={styles.datePickerOverlay}>
                     <View style={styles.datePickerCard}>
                         <Text style={styles.datePickerTitle}>Select Date</Text>
@@ -465,8 +475,10 @@ export const PurchasesScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
+            )}
 
-            <Modal visible={modalVisible} animationType="none" transparent={true}>
+            {modalVisible && (
+                <Modal visible={modalVisible} animationType="none" transparent={true}>
                 <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <Pressable style={styles.modalBackdrop} onPress={closeModal} />
                     <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }] }]}>
@@ -767,6 +779,7 @@ export const PurchasesScreen: React.FC = () => {
                     </Animated.View>
                 </KeyboardAvoidingView>
             </Modal>
+            )}
         </SafeAreaView>
     );
 };

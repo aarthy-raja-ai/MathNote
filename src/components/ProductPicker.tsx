@@ -31,12 +31,18 @@ export const ProductPicker: React.FC<ProductPickerProps> = ({
     const filteredProducts = products.filter((p) =>
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.category?.toLowerCase().includes(search.toLowerCase()) ||
-        p.barcode?.toLowerCase().includes(search.toLowerCase())
+        p.barcode?.toLowerCase().includes(search.toLowerCase()) ||
+        p.barcodes?.some(b => b.toLowerCase().includes(search.toLowerCase()))
     );
 
     const handleScan = (data: string) => {
         setIsScannerVisible(false);
-        const match = products.find(p => p.barcode === data);
+        const scanned = data.toLowerCase();
+        // Check both legacy barcode field and barcodes[] array
+        const match = products.find(p =>
+            p.barcode?.toLowerCase() === scanned ||
+            p.barcodes?.some(b => b.toLowerCase() === scanned)
+        );
         if (match) {
             onSelect(match);
         } else {

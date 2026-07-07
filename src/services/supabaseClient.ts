@@ -28,9 +28,14 @@ export const supabase = {
         const key = parseStoredValue(rawKey);
 
         if (url && key) {
-            console.log('[Supabase] Initializing client with URL:', url);
-            this.client = createClient(url, key);
-            return this.client;
+            try {
+                console.log('[Supabase] Initializing client with URL:', url);
+                this.client = createClient(url, key);
+                return this.client;
+            } catch (err) {
+                console.error('[Supabase] Failed to create Supabase client:', err);
+                return null;
+            }
         }
         return null;
     },
